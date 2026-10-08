@@ -13826,6 +13826,12 @@ impl Input {
         });
     }
 
+    /// Like [`Self::set_pending_command`], but the command never shows in the
+    /// editor while waiting for the shell.
+    pub fn set_hidden_pending_command(&mut self, command: &str) {
+        self.pending_command = Some(PendingCommand::Exact(command.to_owned()));
+    }
+
     fn should_enter_accept_completion_suggestion(&self, app: &AppContext) -> bool {
         let InputSuggestionsMode::CompletionSuggestions {
             replacement_start, ..
