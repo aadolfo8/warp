@@ -3975,6 +3975,29 @@ impl PaneGroup {
         new_pane_id
     }
 
+    /// Splits `base_pane_id` with a new terminal pane on its `direction` side
+    /// whose shell starts in `directory` (e.g. to open a Claude thread dropped
+    /// from the Threads panel there).
+    pub(crate) fn split_terminal_pane_from(
+        &mut self,
+        base_pane_id: PaneId,
+        direction: Direction,
+        directory: PathBuf,
+        ctx: &mut ViewContext<Self>,
+    ) -> Option<ViewHandle<TerminalView>> {
+        let new_pane_id = self.add_session_in_directory(
+            direction,
+            Some(base_pane_id),
+            None, /* chosen_shell */
+            Some(directory),
+            None, /* conversation_restoration */
+            DefaultSessionModeBehavior::Ignore,
+            ctx,
+        );
+        ctx.emit(Event::AppStateChanged);
+        self.terminal_view_from_pane_id(new_pane_id, ctx)
+    }
+
     /// Used when splitting panes.
     fn insert_terminal_pane(
         &mut self,
@@ -5596,7 +5619,7 @@ impl PaneGroup {
 
     /// Clear all panes that were hidden due to being closed (for undo functionality)
     /// This is typically called when starting pane rearrangement operations
-    fn clear_hidden_closed_panes(&mut self, ctx: &mut ViewContext<Self>) {
+    pub(crate) fn clear_hidden_closed_panes(&mut self, ctx: &mut ViewContext<Self>) {
         let closed_pane_ids = self.panes.get_closed_pane_ids();
         for pane_id in closed_pane_ids {
             self.cleanup_closed_pane(pane_id, ctx);

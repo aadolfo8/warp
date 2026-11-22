@@ -290,6 +290,8 @@ objc2-app-kit = { workspace = true, features = [
 objc2-core-foundation.workspace = true
 objc2-foundation = { workspace = true, features = [
     "NSBundle",
+    "NSError",
+    "NSFileManager",
     "NSLocale",
     "NSPathUtilities",
     "NSString",
@@ -414,6 +416,7 @@ windows = { workspace = true, features = [
     "Win32_System_Threading",
     "Win32_System_LibraryLoader",
     "Win32_System_WindowsProgramming",
+    "Win32_UI_Shell",
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-registry = { workspace = true }

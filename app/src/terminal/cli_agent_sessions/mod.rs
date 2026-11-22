@@ -183,6 +183,15 @@ impl CLIAgentSession {
         self.remote_host.is_some()
     }
 
+    /// Whether the agent is working on a prompt right now. A session starts
+    /// out `InProgress` before any prompt (and stays so until its first
+    /// `Stop`), so that status alone also covers an agent idle at its prompt;
+    /// a submitted prompt is what tells a running turn apart.
+    pub fn is_working_on_prompt(&self) -> bool {
+        matches!(self.status, CLIAgentSessionStatus::InProgress)
+            && self.session_context.query.is_some()
+    }
+
     /// Whether the session surfaces trustworthy fine-grained status
     /// (in-progress / blocked / success). True only after receiving a rich OSC
     /// 777 notification. Codex's OSC 9 fallback emits only opaque `Stop`
@@ -422,6 +431,18 @@ impl CLIAgentSessionsModel {
 
     pub fn session(&self, terminal_view_id: EntityId) -> Option<&CLIAgentSession> {
         self.sessions.get(&terminal_view_id)
+    }
+
+    /// The terminal running the agent conversation with this session id (as
+    /// reported by the agent's plugin), if any.
+    pub fn session_by_agent_session_id(
+        &self,
+        session_id: &str,
+    ) -> Option<(EntityId, &CLIAgentSession)> {
+        self.sessions
+            .iter()
+            .find(|(_, session)| session.session_context.session_id.as_deref() == Some(session_id))
+            .map(|(terminal_view_id, session)| (*terminal_view_id, session))
     }
 
     /// Returns `true` if the rich input editor is currently open for this terminal.

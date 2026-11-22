@@ -2032,10 +2032,9 @@ impl CodeView {
             Expanded::new(1., clipped_tabs).finish()
         });
 
-        let show_close_button = self
-            .focus_handle
-            .as_ref()
-            .is_some_and(|h| h.is_in_split_pane(app));
+        // Always closable: a lone editor would otherwise only close from the
+        // tab list, which is hidden while the sidebar shows Threads or Projects.
+        let show_close_button = true;
 
         let buttons = render_pane_header_buttons::<CodeViewAction, CodeViewAction>(
             header_ctx,
@@ -2086,10 +2085,9 @@ impl CodeView {
             right_row.add_child(ChildView::new(segmented).finish());
         }
 
-        let show_close_button = self
-            .focus_handle
-            .as_ref()
-            .is_some_and(|h| h.is_in_split_pane(app));
+        // Always closable: a lone editor would otherwise only close from the
+        // tab list, which is hidden while the sidebar shows Threads or Projects.
+        let show_close_button = true;
 
         right_row.add_child(
             render_pane_header_buttons::<CodeViewAction, CodeViewAction>(
@@ -2571,7 +2569,11 @@ impl BackingView for CodeView {
         ctx: &view::HeaderRenderContext<'_>,
         app: &AppContext,
     ) -> view::HeaderContent {
-        if self.tab_group.len() >= 2 {
+        // A single code file shows its tab too, like VS Code; Markdown keeps the
+        // centered header, which holds its view-mode toggle.
+        let use_tab_bar = self.tab_group.len() >= 2
+            || (self.tab_group.len() == 1 && self.markdown_mode_segmented_control.is_none());
+        if use_tab_bar {
             // Multi-tab case: render custom tab bar with explicit draggable handling
             view::HeaderContent::Custom {
                 element: self.render_tab_bar_with_draggable(ctx, app),

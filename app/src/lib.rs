@@ -13,6 +13,7 @@ mod banner;
 mod billing;
 mod changelog_model;
 mod chip_configurator;
+mod claude_threads;
 mod cloud_object;
 mod code;
 mod code_review;
@@ -61,6 +62,7 @@ mod pricing;
 #[cfg(feature = "local_tty")]
 mod process_environment;
 mod profiling;
+mod project_manager;
 mod projects;
 mod prompt;
 mod quit_warning;
@@ -105,6 +107,7 @@ mod wasm_nux_dialog;
 mod window_settings;
 mod word_block_editor;
 mod workspaces;
+mod worktrees;
 
 // PLEASE DO NOT ADD MORE PUBLIC MODULES!
 //

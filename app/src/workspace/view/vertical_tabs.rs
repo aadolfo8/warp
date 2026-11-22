@@ -18,11 +18,11 @@ use warp_core::ui::color::coloru_with_opacity;
 use warp_core::ui::theme::color::internal_colors;
 use warp_core::ui::theme::{AnsiColorIdentifier, Fill as WarpThemeFill, WarpTheme};
 use warpui::elements::{
-    Border, ChildAnchor, Clipped, ClippedScrollStateHandle, ClippedScrollable, ConstrainedBox,
-    Container, CornerRadius, CrossAxisAlignment, DispatchEventResult, DragAxis, DragBarSide,
-    Draggable, DropShadow, DropTarget, Element, Empty, EventHandler, Expanded, Fill as ElementFill,
-    Flex, Highlight, Hoverable, MainAxisAlignment, MainAxisSize, MouseStateHandle,
-    OffsetPositioning, Padding, ParentAnchor, ParentElement, ParentOffsetBounds,
+    Border, ChildAnchor, ChildView, Clipped, ClippedScrollStateHandle, ClippedScrollable,
+    ConstrainedBox, Container, CornerRadius, CrossAxisAlignment, DispatchEventResult, DragAxis,
+    DragBarSide, Draggable, DropShadow, DropTarget, Element, Empty, EventHandler, Expanded,
+    Fill as ElementFill, Flex, Highlight, Hoverable, MainAxisAlignment, MainAxisSize,
+    MouseStateHandle, OffsetPositioning, Padding, ParentAnchor, ParentElement, ParentOffsetBounds,
     PositionedElementAnchor, PositionedElementOffsetBounds, Radius, Resizable,
     ResizableStateHandle, SavePosition, ScrollTarget, ScrollToPositionMode, ScrollbarWidth,
     Shrinkable, Stack, Text, resizable_state_handle,
@@ -1439,6 +1439,7 @@ fn render_control_bar(
             .with_cross_axis_alignment(CrossAxisAlignment::Center)
             .with_spacing(CONTROL_BAR_SPACING)
             .with_child(Shrinkable::new(1., search_bar).finish())
+            .with_child(ChildView::new(&workspace.worktree_selector).finish())
             .with_child(settings_button)
             .with_child(new_tab_button)
             .finish(),
@@ -1677,6 +1678,24 @@ fn render_vertical_tabs_panel(
     let appearance = Appearance::as_ref(app);
     let theme = appearance.theme();
 
+    // Threads and Projects take the place of the tab list (see
+    // `claude_threads` and `project_manager`).
+    let other_content = match workspace.vertical_tabs_content {
+        super::VerticalTabsContent::Tabs => None,
+        super::VerticalTabsContent::Threads => {
+            Some(ChildView::new(&workspace.claude_threads_view).finish())
+        }
+        super::VerticalTabsContent::Projects => {
+            Some(ChildView::new(&workspace.project_manager_view).finish())
+        }
+    };
+    if let Some(content) = other_content {
+        let content = Container::new(content)
+            .with_background(internal_colors::fg_overlay_1(theme))
+            .finish();
+        return render_resizable_panel(state, side, content);
+    }
+
     let scrollable_groups = ClippedScrollable::vertical(
         state.scroll_state.clone(),
         render_groups(state, workspace, app),
@@ -1724,10 +1743,6 @@ fn render_vertical_tabs_panel(
     // with None and silently dropping all clicks on the popup items.
     let panel_with_popup: Box<dyn Element> = panel_content;
 
-    let drag_side = match side {
-        super::PanelPosition::Left => DragBarSide::Right,
-        super::PanelPosition::Right => DragBarSide::Left,
-    };
     // Wrap the panel in a `Hoverable` so right-clicking the empty area of the
     // vertical tabs panel opens the tab configs dropdown.
     let inner = Hoverable::new(state.panel_right_click_mouse_state.clone(), |_| {
@@ -1751,6 +1766,19 @@ fn render_vertical_tabs_panel(
     .with_defer_events_to_children()
     .finish();
 
+    render_resizable_panel(state, side, inner)
+}
+
+/// Lets the panel be resized by dragging its inner edge.
+fn render_resizable_panel(
+    state: &VerticalTabsPanelState,
+    side: super::PanelPosition,
+    inner: Box<dyn Element>,
+) -> Box<dyn Element> {
+    let drag_side = match side {
+        super::PanelPosition::Left => DragBarSide::Right,
+        super::PanelPosition::Right => DragBarSide::Left,
+    };
     Resizable::new(state.resizable_state.clone(), inner)
         .with_dragbar_side(drag_side)
         .on_resize(|ctx, _| {
@@ -2584,14 +2612,9 @@ fn render_tab_group_internal(
             .on_drop(|ctx, _, _, _| {
                 ctx.dispatch_typed_action(WorkspaceAction::DropTab);
             });
-        // Only lock the drag to the vertical axis when cross-window tab drag is
-        // disabled. When it is enabled, the user needs to be able to drag
-        // horizontally out of the panel to detach the tab into a new window.
-        let draggable = if FeatureFlag::DragTabsToWindows.is_enabled() {
-            draggable
-        } else {
-            draggable.with_drag_axis(DragAxis::VerticalOnly)
-        };
+        // The drag is never locked to the vertical axis: besides detaching a
+        // tab into a new window, dropping it over a pane of the active tab
+        // merges it there as a split (see `tab_merge`).
         draggable.finish()
     };
 
@@ -3223,10 +3246,13 @@ fn render_grouped_tab_container(
     let skip_group_draggable = is_any_pane_dragging;
     let is_this_group_dragging = group.draggable_state.is_dragging();
     let group_draggable_state = group.draggable_state.clone();
+    // A group holding a single tab drags like that tab: it may leave the panel
+    // to be dropped on a pane of the active tab (see `tab_merge`).
+    let is_single_tab_group = super::group_has_single_member(&workspace.tabs, group_id);
     let positioned_container: Box<dyn Element> = if skip_group_draggable {
         container
     } else {
-        Draggable::new(group_draggable_state.clone(), container)
+        let draggable = Draggable::new(group_draggable_state.clone(), container)
             .on_drag_start(move |ctx, _, _| {
                 ctx.dispatch_typed_action(WorkspaceAction::StartGroupDrag(group_id));
             })
@@ -3243,11 +3269,15 @@ fn render_grouped_tab_container(
             .on_drop(move |ctx, _, _, _| {
                 ctx.dispatch_typed_action(WorkspaceAction::DropGroup);
             })
-            .with_drag_axis(DragAxis::VerticalOnly)
             // Yield to a nested per-tab `Draggable` when it claims the mouse-down.
             // This allows dragging a tab within a group, without triggering the groups `Draggable`.
-            .with_defer_to_handled_child_mouse_down()
-            .finish()
+            .with_defer_to_handled_child_mouse_down();
+        let draggable = if is_single_tab_group {
+            draggable
+        } else {
+            draggable.with_drag_axis(DragAxis::VerticalOnly)
+        };
+        draggable.finish()
     };
 
     // Ghost slot: while dragging, the `Draggable` paints to the overlay

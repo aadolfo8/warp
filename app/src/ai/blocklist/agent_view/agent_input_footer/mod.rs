@@ -2,6 +2,7 @@ pub(super) mod chips;
 pub mod editor;
 mod environment_selector;
 pub mod toolbar_item;
+pub(crate) mod worktree_selector;
 
 #[cfg(not(target_family = "wasm"))]
 use std::env;
@@ -51,6 +52,7 @@ use warpui::{
 pub(crate) use self::environment_selector::{
     EnvironmentSelector, EnvironmentSelectorEvent, EnvironmentSelectorTarget,
 };
+use self::worktree_selector::{WorktreeButtonStyle, WorktreeSelector, WorktreeSelectorEvent};
 use crate::ai::AIRequestUsageModel;
 use crate::ai::blocklist::BlocklistAIInputModel;
 use crate::ai::blocklist::agent_view::is_in_cloud_context;
@@ -131,6 +133,8 @@ const FAST_FORWARD_LOCKED_TOOLTIP: &str =
     "Fast forward is always enabled for cloud agent conversations";
 
 const START_REMOTE_CONTROL_TOOLTIP: &str = "Start remote control";
+const CLAUDE_REMOTE_TOOLTIP: &str =
+    "Control this session from your phone or claude.ai/code (Claude Code's /remote-control)";
 const START_REMOTE_CONTROL_LOGIN_REQUIRED_TOOLTIP: &str = "Log in to use /remote-control";
 
 const LIVE_REMOTE_VM_INDICATOR_TOOLTIP: &str = "Connected to a live cloud agent session. Your next prompt continues on the running remote machine.";
@@ -201,6 +205,9 @@ pub struct AgentInputFooter {
     file_button: ViewHandle<ActionButton>,
     start_remote_control_button: ViewHandle<ActionButton>,
     stop_remote_control_button: ViewHandle<ActionButton>,
+    /// Runs Claude Code's own `/remote-control`; replaces Warp's remote
+    /// control chip in Claude Code panes.
+    claude_remote_button: ViewHandle<ActionButton>,
     context_window_button: ViewHandle<ActionButton>,
     usage_button: ViewHandle<ActionButton>,
     /// Non-interactive indicators for a cloud follow-up pane: one shown when attached to a live
@@ -211,6 +218,7 @@ pub struct AgentInputFooter {
     model_selector: ViewHandle<ProfileModelSelector>,
     environment_selector: Option<ViewHandle<EnvironmentSelector>>,
     handoff_environment_selector: ViewHandle<EnvironmentSelector>,
+    worktree_selector: ViewHandle<WorktreeSelector>,
     prompt_alert: ViewHandle<PromptAlertView>,
     ambient_agent_view_model: Option<ModelHandle<AmbientAgentViewModel>>,
     handoff_compose_state: ModelHandle<HandoffComposeState>,
@@ -679,6 +687,17 @@ impl AgentInputFooter {
                 })
         });
 
+        let claude_remote_button = ctx.add_typed_action_view(|_ctx| {
+            ActionButton::new("Claude Remote", RemoteControlButtonTheme)
+                .with_icon(Icon::Phone01)
+                .with_tooltip(CLAUDE_REMOTE_TOOLTIP)
+                .with_size(cli_button_size)
+                .with_tooltip_alignment(TooltipAlignment::Left)
+                .on_click(|ctx| {
+                    ctx.dispatch_typed_action(AgentInputFooterAction::StartClaudeRemoteControl);
+                })
+        });
+
         let stop_remote_control_button = ctx.add_typed_action_view(|_ctx| {
             ActionButton::new("Stop sharing", RemoteControlButtonTheme)
                 .with_icon(Icon::StopFilled)
@@ -793,6 +812,28 @@ impl AgentInputFooter {
                 ctx.notify();
             },
         );
+
+        let worktree_terminal_model = terminal_model.clone();
+        let worktree_selector = ctx.add_typed_action_view(|ctx| {
+            WorktreeSelector::new(
+                menu_positioning_provider.clone(),
+                Arc::new(move |_app: &AppContext| {
+                    worktree_terminal_model
+                        .lock()
+                        .block_list()
+                        .active_block()
+                        .pwd()
+                        .map(std::path::PathBuf::from)
+                }),
+                WorktreeButtonStyle::Footer,
+                ctx,
+            )
+        });
+        ctx.subscribe_to_view(&worktree_selector, |_, _, event, ctx| match event {
+            WorktreeSelectorEvent::MenuVisibilityChanged { open } => {
+                ctx.emit(AgentInputFooterEvent::ToggledChipMenu { open: *open });
+            }
+        });
 
         let prompt_alert = ctx.add_typed_action_view(PromptAlertView::new);
         ctx.subscribe_to_view(&prompt_alert, |_, _, event, ctx| {
@@ -973,6 +1014,7 @@ impl AgentInputFooter {
             rich_input_button,
             settings_button,
             start_remote_control_button,
+            claude_remote_button,
             stop_remote_control_button,
             install_plugin_button,
             plugin_instructions_button,
@@ -988,6 +1030,7 @@ impl AgentInputFooter {
             model_selector: profile_model_selector_full,
             environment_selector,
             handoff_environment_selector,
+            worktree_selector,
             prompt_alert,
             terminal_model,
             handoff_compose_state,
@@ -1615,6 +1658,12 @@ impl AgentInputFooter {
                 if is_conversation_transcript_context {
                     return None;
                 }
+                // Claude Code panes offer Claude's own remote control instead
+                // of Warp's session sharing, unless Warp is sharing right now
+                // (so it can still be stopped here).
+                if self.cli_agent(app) == Some(CLIAgent::Claude) && !shared_status.is_sharer() {
+                    return Some(ChildView::new(&self.claude_remote_button).finish());
+                }
                 let enabled = FeatureFlag::CreatingSharedSessions.is_enabled()
                     && FeatureFlag::HOARemoteControl.is_enabled()
                     && ContextFlag::CreateSharedSession.is_enabled();
@@ -1630,6 +1679,9 @@ impl AgentInputFooter {
                 Some(ChildView::new(button).finish())
             }
             AgentToolbarItemKind::Settings => Some(ChildView::new(&self.settings_button).finish()),
+            AgentToolbarItemKind::Worktree => item
+                .is_available(app)
+                .then(|| ChildView::new(&self.worktree_selector).finish()),
             // Handled by the available_in() guard above; included for exhaustiveness.
             AgentToolbarItemKind::ModelSelector
             | AgentToolbarItemKind::NLDToggle
@@ -1817,8 +1869,12 @@ impl AgentInputFooter {
             .is_some_and(|selector| selector.as_ref(app).is_menu_open());
         let has_open_handoff_env_selector =
             self.handoff_environment_selector.as_ref(app).is_menu_open();
+        let has_open_worktree_selector = self.worktree_selector.as_ref(app).is_menu_open();
 
-        has_open_display_chip || has_open_env_selector || has_open_handoff_env_selector
+        has_open_display_chip
+            || has_open_env_selector
+            || has_open_handoff_env_selector
+            || has_open_worktree_selector
     }
 
     pub fn is_model_selector_open(&self, app: &AppContext) -> bool {
@@ -2465,6 +2521,9 @@ impl AgentInputFooter {
             AgentToolbarItemKind::FileExplorer => item
                 .is_available(app)
                 .then(|| ChildView::new(&self.file_explorer_button).finish()),
+            AgentToolbarItemKind::Worktree => item
+                .is_available(app)
+                .then(|| ChildView::new(&self.worktree_selector).finish()),
             // Handled by the available_in() guard above; included for exhaustiveness.
             AgentToolbarItemKind::RichInput | AgentToolbarItemKind::Settings => None,
         }
@@ -2665,6 +2724,8 @@ pub enum AgentInputFooterAction {
     DismissPluginChip,
     StartRemoteControl,
     StopRemoteControl,
+    /// The "Claude Remote" chip: run Claude Code's `/remote-control`.
+    StartClaudeRemoteControl,
     OpenCodingAgentSettings,
     /// User clicked the "Hand off to cloud" footer chip. The terminal `Input`
     /// subscriber decides whether to dispatch the immediate empty-prompt
@@ -2847,6 +2908,9 @@ impl TypedActionView for AgentInputFooter {
             AgentInputFooterAction::StopRemoteControl => {
                 ctx.emit(AgentInputFooterEvent::StopRemoteControl);
             }
+            AgentInputFooterAction::StartClaudeRemoteControl => {
+                ctx.emit(AgentInputFooterEvent::StartClaudeRemoteControl);
+            }
             AgentInputFooterAction::OpenCodingAgentSettings => {
                 #[cfg(not(target_family = "wasm"))]
                 ctx.dispatch_typed_action_deferred(WorkspaceAction::ScrollToSettingsWidget {
@@ -2907,6 +2971,7 @@ pub enum AgentInputFooterEvent {
     ToggleFileExplorer(Option<CLIAgent>),
     StartRemoteControl,
     StopRemoteControl,
+    StartClaudeRemoteControl,
     OpenRichInput,
     HideRichInput,
     ToggledChipMenu {

@@ -846,6 +846,58 @@ pub enum WorkspaceAction {
     /// Open a folder picker to add a new repo to PersistedWorkspace (from the
     /// "New worktree config" submenu's "+ Add new repo..." item).
     OpenWorktreeAddRepoPicker,
+    /// Open a new terminal tab whose shell starts in `path` (used by the footer
+    /// "Worktree" button after switching or creating a branch).
+    OpenDirectoryInNewTab {
+        path: PathBuf,
+    },
+    /// Run `claude` in the active terminal when it's idle, otherwise in a new tab.
+    OpenClaudeSession,
+    /// Open a new terminal tab in `directory` and run `command` in it (used by
+    /// the Threads panel to start or resume Claude Code conversations).
+    RunCommandInNewTab {
+        directory: PathBuf,
+        command: String,
+        /// Tab group to put the new tab in, created when no group has this
+        /// name yet (e.g. the project folder of a Claude thread).
+        group: Option<String>,
+    },
+    /// Show the Threads panel (Claude Code conversations by project) in the
+    /// vertical tabs sidebar, or hide it when it's already showing.
+    ToggleClaudeThreadsPanel,
+    /// Show the Projects panel (saved projects by tag) in the vertical tabs
+    /// sidebar, or hide it when it's already showing.
+    ToggleProjectManagerPanel,
+    /// Save the active tab's folder in the Projects panel.
+    SaveActiveDirectoryAsProject,
+    /// Open a project from the Projects panel: a new tab in its folder, with
+    /// the Projects panel closed and the file explorer showing the project.
+    OpenProjectFolder {
+        path: PathBuf,
+    },
+    /// Open a project from the Projects panel in a new window, with a terminal
+    /// in its folder and the file explorer showing it.
+    OpenProjectInNewWindow {
+        path: PathBuf,
+    },
+    /// A Claude thread is being dragged from the Threads panel; highlights the
+    /// pane of the active tab it would split.
+    DragClaudeThread {
+        position: RectF,
+    },
+    /// A dragged Claude thread was dropped: over a pane of the active tab it
+    /// moves there as a split. A thread already open in a tab moves its pane;
+    /// otherwise a new split in `directory` runs `command`, which resumes it.
+    DropClaudeThread {
+        session_id: String,
+        directory: PathBuf,
+        command: Option<String>,
+    },
+    /// Open a file in the code editor, split to the right of the active pane
+    /// (so it gets a close button even while the tab list is hidden).
+    OpenFileInSplitPane {
+        path: PathBuf,
+    },
     SaveCurrentTabAsNewConfig(usize),
     SyncTrafficLights,
     /// Opens a tab config file in the editor and dismisses the associated error toast.
@@ -1108,6 +1160,17 @@ impl WorkspaceAction {
             | OpenNewWorktreeModal
             | OpenNewWorktreeRepoPicker
             | OpenWorktreeInRepo { .. }
+            | OpenDirectoryInNewTab { .. }
+            | OpenClaudeSession
+            | RunCommandInNewTab { .. }
+            | ToggleClaudeThreadsPanel
+            | ToggleProjectManagerPanel
+            | SaveActiveDirectoryAsProject
+            | OpenProjectFolder { .. }
+            | OpenProjectInNewWindow { .. }
+            | DragClaudeThread { .. }
+            | DropClaudeThread { .. }
+            | OpenFileInSplitPane { .. }
             | OpenWorktreeAddRepoPicker
             | Crash
             | Panic
