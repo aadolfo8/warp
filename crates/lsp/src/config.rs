@@ -325,9 +325,15 @@ fn default_client_capabilities() -> ClientCapabilities {
 pub fn default_init_params(workspace_uri: &Path, client_name: String) -> Result<InitializeParams> {
     let workspace_folder = path_to_workspace_folder(workspace_uri)?;
 
+    // `rootUri`/`rootPath` are deprecated in favor of `workspaceFolders`, but
+    // some servers still rely on them: typescript-language-server only looks
+    // for the project's own `node_modules/typescript` under `rootUri`.
+    #[allow(deprecated)]
     Ok(InitializeParams {
         process_id: Some(std::process::id()),
         capabilities: default_client_capabilities(),
+        root_uri: Some(workspace_folder.uri.clone()),
+        root_path: Some(workspace_uri.to_string_lossy().into_owned()),
         workspace_folders: Some(vec![workspace_folder]),
         client_info: Some(ClientInfo {
             name: client_name,

@@ -26,6 +26,15 @@ impl TypeScriptLanguageServerCandidate {
     #[cfg(feature = "local_fs")]
     const OLD_SERVER_PATH: &str = "node_modules/typescript-language-server/lib/cli.js";
 
+    /// The bundled TypeScript's server, used when a project has no TypeScript
+    /// of its own. TypeScript 7 (the native port) no longer ships it.
+    #[cfg(feature = "local_fs")]
+    const TSSERVER_PATH: &str = "node_modules/typescript/lib/tsserver.js";
+
+    /// TypeScript installed next to the language server; 7+ has no tsserver.js.
+    #[cfg(feature = "local_fs")]
+    const TYPESCRIPT_PACKAGE: &str = "typescript@5";
+
     pub fn new(client: Arc<http_client::Client>) -> Self {
         Self { client }
     }
@@ -62,6 +71,31 @@ impl TypeScriptLanguageServerCandidate {
                 }
             }
         };
+
+        // Installs from before TypeScript was pinned may have TypeScript 7, which
+        // the language server can't use: put TypeScript 5 back in place.
+        if !install_dir.join(Self::TSSERVER_PATH).is_file() {
+            log::info!(
+                "typescript-language-server has no usable TypeScript; installing {}",
+                Self::TYPESCRIPT_PACKAGE
+            );
+            let repaired = CommandBuilder::new(path_env_var.map(str::to_owned))
+                .command("npm")
+                .arg("install")
+                .arg("--ignore-scripts")
+                .arg(Self::TYPESCRIPT_PACKAGE)
+                .current_dir(&install_dir)
+                .output()
+                .await
+                .is_ok_and(|output| output.status.success());
+            if !repaired || !install_dir.join(Self::TSSERVER_PATH).is_file() {
+                log::warn!(
+                    "Could not install {} for typescript-language-server",
+                    Self::TYPESCRIPT_PACKAGE
+                );
+                return None;
+            }
+        }
 
         // Try to find a working node binary - first custom, then system
         let node_binary = node_runtime::find_working_node_binary(path_env_var).await?;
@@ -186,7 +220,7 @@ impl LanguageServerCandidate for TypeScriptLanguageServerCandidate {
         cmd.arg("install")
             .arg("--ignore-scripts")
             .arg(format!("typescript-language-server@{}", metadata.version))
-            .arg("typescript")
+            .arg(Self::TYPESCRIPT_PACKAGE)
             .current_dir(&install_dir);
 
         let output = cmd.output().await.context("Failed to run npm install")?;
