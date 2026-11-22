@@ -2550,10 +2550,12 @@ impl AppContext {
                         key_code,
                         ..
                     } => {
-                        if let Some(Event::MouseMoved { cmd, shift, .. }) =
-                            &mut (*last_mouse_moved_event.borrow_mut())
+                        if let Some(Event::MouseMoved {
+                            cmd, ctrl, shift, ..
+                        }) = &mut (*last_mouse_moved_event.borrow_mut())
                         {
                             *cmd = modifiers.cmd;
+                            *ctrl = modifiers.ctrl;
                             *shift = modifiers.shift;
                         }
 
@@ -2608,6 +2610,7 @@ impl AppContext {
                     } => {
                         if let Some(Event::MouseMoved {
                             cmd,
+                            ctrl,
                             shift,
                             position,
                             is_synthetic: _,
@@ -2615,6 +2618,7 @@ impl AppContext {
                         {
                             *position = new_position;
                             *cmd = modifiers.cmd;
+                            *ctrl = modifiers.ctrl;
                             *shift = modifiers.shift;
                         }
                     }

@@ -210,6 +210,8 @@ pub struct CodeFooterView {
     is_lsp_menu_open: bool,
     /// Whether to render the top border. Disabled for code review footer.
     show_border: bool,
+    /// Whether this footer already turned language support on by itself.
+    auto_enable_requested: bool,
 }
 
 /// Wraps the per-server-type status map and enforces a single invariant on
@@ -353,6 +355,7 @@ impl CodeFooterView {
                 tab_config_skill_button: Some(tab_config_skill_button),
                 is_lsp_menu_open: false,
                 show_border: true,
+                auto_enable_requested: false,
             };
             footer.sync_tab_config_skill_button(ctx);
             ctx.subscribe_to_model(&AISettings::handle(ctx), |me, _, _, ctx| {
@@ -428,6 +431,7 @@ impl CodeFooterView {
                     *lsp_repo_status = new_status;
                 }
                 me.update_enable_button_label(ctx);
+                me.auto_enable_lsp(ctx);
                 ctx.notify();
             });
 
@@ -449,6 +453,7 @@ impl CodeFooterView {
             enable_lsp_button,
             tab_config_skill_button: None,
             show_border: true,
+            auto_enable_requested: false,
         }
     }
 
@@ -583,6 +588,7 @@ impl CodeFooterView {
             enable_lsp_button: None,
             tab_config_skill_button: None,
             show_border: false,
+            auto_enable_requested: false,
         };
 
         // Populate initial servers from the manager
@@ -646,6 +652,40 @@ impl CodeFooterView {
         self.update_enable_button_label(ctx);
 
         ctx.notify();
+    }
+
+    /// Turns language support on without the button, like VS Code does: once
+    /// per footer, when the server is off for this file's repo (installing it
+    /// first if needed), unless the user explicitly turned it off there.
+    #[cfg(feature = "local_fs")]
+    pub(crate) fn auto_enable_lsp(&mut self, ctx: &mut ViewContext<Self>) {
+        if self.auto_enable_requested {
+            return;
+        }
+        let FooterMode::SingleFile {
+            path,
+            lsp_repo_status,
+            ..
+        } = &self.mode
+        else {
+            return;
+        };
+        let (needs_install, server_type) = match lsp_repo_status {
+            LspRepoStatus::DisabledAndInstalled { server_type } => (false, *server_type),
+            LspRepoStatus::DisabledAndNotInstalled { server_type } => (true, *server_type),
+            _ => return,
+        };
+        if PersistedWorkspace::as_ref(ctx).is_lsp_server_disabled_for_path(path, server_type) {
+            return;
+        }
+        self.auto_enable_requested = true;
+        let path = path.clone();
+        let server_type = Some(server_type);
+        if needs_install {
+            ctx.emit(CodeFooterViewEvent::InstallAndEnableLSP { path, server_type });
+        } else {
+            ctx.emit(CodeFooterViewEvent::EnableLSP { path, server_type });
+        }
     }
 
     /// Returns the appropriate button label for the given LSP repo status.

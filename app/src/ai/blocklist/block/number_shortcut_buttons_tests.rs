@@ -114,6 +114,7 @@ fn mouse_moved_event(position: Vector2F, is_synthetic: bool) -> Event {
     Event::MouseMoved {
         position,
         cmd: false,
+        ctrl: false,
         shift: false,
         is_synthetic,
     }

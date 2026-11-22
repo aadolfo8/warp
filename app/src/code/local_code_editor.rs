@@ -1528,6 +1528,9 @@ impl LocalCodeEditorView {
                         Self::handle_persisted_workspace_event(me, event, ctx);
                     },
                 );
+                // Turn language support on by itself when it's known to be off
+                // already; later status changes are handled inside the footer.
+                footer.update(ctx, |footer, ctx| footer.auto_enable_lsp(ctx));
             }
 
             self.footer = Some(footer);

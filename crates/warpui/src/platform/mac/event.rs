@@ -126,6 +126,9 @@ pub unsafe fn from_native(
                 cmd: native_event
                     .modifierFlags()
                     .contains(NSEventModifierFlags::Command),
+                ctrl: native_event
+                    .modifierFlags()
+                    .contains(NSEventModifierFlags::Control),
                 shift: native_event
                     .modifierFlags()
                     .contains(NSEventModifierFlags::Shift),
