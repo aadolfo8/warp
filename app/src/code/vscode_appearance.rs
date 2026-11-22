@@ -2,7 +2,8 @@
 //! VS Code's `workbench.colorTheme` and its editor font settings.
 //!
 //! Everything is read once, the first time a code editor is created. When VS
-//! Code or the theme can't be found, the editor keeps Warp's own look.
+//! Code or its theme can't be found, the colors fall back to VS Code's built-in
+//! Dark+ theme and the font keeps Warp's own settings.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,6 +19,9 @@ use warpui::{AppContext, SingletonEntity};
 const DEFAULT_FONT_FAMILY: &str = "Menlo";
 const DEFAULT_FONT_SIZE: f32 = 12.;
 const DEFAULT_LINE_HEIGHT_RATIO: f32 = 1.5;
+
+/// VS Code's built-in Dark+ theme, used when no VS Code theme is found.
+const DARK_PLUS_THEME: &str = include_str!("vscode_themes/dark_plus.json");
 
 /// Tree-sitter capture names emitted by the highlight queries, mapped to the
 /// TextMate scope VS Code themes use for the same kind of token.
@@ -127,16 +131,24 @@ pub fn palette() -> Option<&'static EditorPalette> {
 }
 
 fn load(ctx: &mut AppContext) -> EditorAppearance {
-    let Some(settings) = read_vscode_settings() else {
-        return EditorAppearance::default();
-    };
+    let settings = read_vscode_settings();
 
     let palette = settings
-        .get("workbench.colorTheme")
+        .as_ref()
+        .and_then(|settings| settings.get("workbench.colorTheme"))
         .and_then(Value::as_str)
         .and_then(find_theme_file)
         .and_then(|path| read_theme(&path))
+        .or_else(builtin_dark_plus)
         .map(|theme| palette_from_theme(&theme));
+
+    // Without VS Code there are no font settings to copy: keep Warp's.
+    let Some(settings) = settings else {
+        return EditorAppearance {
+            palette,
+            ..Default::default()
+        };
+    };
 
     let font_size = settings
         .get("editor.fontSize")
@@ -180,11 +192,10 @@ fn load_font(_name: &str, _ctx: &mut AppContext) -> Option<FamilyId> {
     None
 }
 
+/// `~/Library/Application Support/Code/User` on macOS, `~/.config/Code/User`
+/// on Linux and `%APPDATA%\Code\User` on Windows.
 fn vscode_user_dir() -> Option<PathBuf> {
-    let home = dirs::home_dir()?;
-    Some(home.join("Library/Application Support/Code/User"))
-        .filter(|dir| dir.is_dir())
-        .or_else(|| Some(home.join(".config/Code/User")).filter(|dir| dir.is_dir()))
+    Some(dirs::config_dir()?.join("Code").join("User")).filter(|dir| dir.is_dir())
 }
 
 fn read_vscode_settings() -> Option<serde_json::Map<String, Value>> {
@@ -227,13 +238,22 @@ fn read_theme(path: &Path) -> Option<Theme> {
 
 fn read_theme_with_depth(path: &Path, depth: usize) -> Option<Theme> {
     let json = read_jsonc(path)?;
-    let mut theme = json
+    let base = json
         .get("include")
         .and_then(Value::as_str)
         .filter(|_| depth < 4)
         .and_then(|include| read_theme_with_depth(&path.parent()?.join(include), depth + 1))
         .unwrap_or_default();
+    Some(theme_from_json(&json, base))
+}
 
+fn builtin_dark_plus() -> Option<Theme> {
+    let json: Value = serde_json::from_str(&strip_jsonc(DARK_PLUS_THEME)).ok()?;
+    Some(theme_from_json(&json, Theme::default()))
+}
+
+/// Applies a theme file's `colors` and `tokenColors` on top of `theme`.
+fn theme_from_json(json: &Value, mut theme: Theme) -> Theme {
     if let Some(colors) = json.get("colors").and_then(Value::as_object) {
         for (key, value) in colors {
             if let Some(value) = value.as_str() {
@@ -271,7 +291,7 @@ fn read_theme_with_depth(path: &Path, depth: usize) -> Option<Theme> {
             theme.token_rules.push((selectors, foreground.to_owned()));
         }
     }
-    Some(theme)
+    theme
 }
 
 fn palette_from_theme(theme: &Theme) -> EditorPalette {

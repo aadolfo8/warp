@@ -1,0 +1,72 @@
+// VS Code's built-in "Dark+" theme (dark_vs + dark_plus, MIT licensed by
+// Microsoft), trimmed to the keys the editor and file tree use. It is the
+// fallback look when no VS Code installation or theme can be found.
+{
+  "name": "Dark+",
+  "colors": {
+    "editor.background": "#1E1E1E",
+    "editor.foreground": "#D4D4D4",
+    "editorLineNumber.foreground": "#858585",
+    "editorLineNumber.activeForeground": "#C6C6C6",
+    "editor.lineHighlightBackground": "#282828",
+    "editor.selectionBackground": "#264F78",
+    "editorCursor.foreground": "#AEAFAD",
+    "editorGutter.addedBackground": "#2EA043",
+    "editorGutter.modifiedBackground": "#1B81A8",
+    "editorGutter.deletedBackground": "#F85149",
+    "gitDecoration.modifiedResourceForeground": "#E2C08D",
+    "gitDecoration.addedResourceForeground": "#81B88B",
+    "gitDecoration.renamedResourceForeground": "#73C991",
+    "gitDecoration.untrackedResourceForeground": "#73C991",
+    "gitDecoration.deletedResourceForeground": "#C74E39",
+    "gitDecoration.conflictingResourceForeground": "#E4676B"
+  },
+  "tokenColors": [
+    { "scope": ["comment"], "settings": { "foreground": "#6A9955" } },
+    { "scope": ["string"], "settings": { "foreground": "#CE9178" } },
+    { "scope": ["string.regexp"], "settings": { "foreground": "#D16969" } },
+    { "scope": ["constant.numeric"], "settings": { "foreground": "#B5CEA8" } },
+    { "scope": ["constant.language"], "settings": { "foreground": "#569CD6" } },
+    {
+      "scope": ["constant.character", "constant.character.escape"],
+      "settings": { "foreground": "#D7BA7D" }
+    },
+    { "scope": ["entity.name.tag"], "settings": { "foreground": "#569CD6" } },
+    { "scope": ["entity.other.attribute-name"], "settings": { "foreground": "#9CDCFE" } },
+    { "scope": ["keyword"], "settings": { "foreground": "#569CD6" } },
+    { "scope": ["keyword.operator"], "settings": { "foreground": "#D4D4D4" } },
+    { "scope": ["keyword.control"], "settings": { "foreground": "#C586C0" } },
+    { "scope": ["storage", "storage.type"], "settings": { "foreground": "#569CD6" } },
+    {
+      "scope": ["entity.name.function", "support.function"],
+      "settings": { "foreground": "#DCDCAA" }
+    },
+    {
+      "scope": [
+        "support.class",
+        "support.type",
+        "entity.name.type",
+        "entity.name.class",
+        "entity.name.namespace",
+        "entity.name.module"
+      ],
+      "settings": { "foreground": "#4EC9B0" }
+    },
+    {
+      "scope": [
+        "variable",
+        "variable.parameter",
+        "variable.other.property",
+        "support.type.property-name.json"
+      ],
+      "settings": { "foreground": "#9CDCFE" }
+    },
+    { "scope": ["variable.other.constant"], "settings": { "foreground": "#4FC1FF" } },
+    { "scope": ["variable.language"], "settings": { "foreground": "#569CD6" } },
+    {
+      "scope": ["punctuation.definition.template-expression"],
+      "settings": { "foreground": "#569CD6" }
+    },
+    { "scope": ["entity.name.label"], "settings": { "foreground": "#C8C8C8" } }
+  ]
+}
