@@ -29,6 +29,7 @@ use crate::code::buffer_location::LocalOrRemotePath;
 #[cfg(feature = "local_fs")]
 use crate::code::file_tree::FileTreeEvent;
 use crate::code::file_tree::FileTreeView;
+use crate::code::source_control::{SourceControlEvent, SourceControlView};
 use crate::coding_panel_enablement_state::CodingPanelEnablementState;
 use crate::drive::panel::{
     DrivePanel, DrivePanelEvent, MAX_SIDEBAR_WIDTH_RATIO, MIN_SIDEBAR_WIDTH,
@@ -74,6 +75,7 @@ use crate::workspaces::user_workspaces::UserWorkspaces;
 #[derive(Default)]
 struct MouseStateHandles {
     project_explorer_button: MouseStateHandle,
+    source_control_button: MouseStateHandle,
     conversation_list_view_button: MouseStateHandle,
     global_search_button: MouseStateHandle,
     warp_drive_button: MouseStateHandle,
@@ -83,6 +85,7 @@ struct MouseStateHandles {
 #[derive(Clone, Debug)]
 pub enum LeftPanelAction {
     ProjectExplorer,
+    SourceControl,
     GlobalSearch { entry_focus: GlobalSearchEntryFocus },
     WarpDrive,
     ConversationListView,
@@ -99,9 +102,9 @@ pub(crate) enum ToolPanelAvailability {
 impl ToolPanelView {
     fn availability(self, app: &AppContext) -> ToolPanelAvailability {
         match self {
-            ToolPanelView::ProjectExplorer | ToolPanelView::GlobalSearch { .. } => {
-                ToolPanelAvailability::Available
-            }
+            ToolPanelView::ProjectExplorer
+            | ToolPanelView::SourceControl
+            | ToolPanelView::GlobalSearch { .. } => ToolPanelAvailability::Available,
             ToolPanelView::WarpDrive => {
                 if WarpDriveSettings::is_warp_drive_available(app) {
                     ToolPanelAvailability::Available
@@ -136,6 +139,13 @@ pub enum LeftPanelEvent {
         target: FileTarget,
         line_col: Option<LineAndColumnArg>,
     },
+    /// Show a read-only diff from the Source Control panel.
+    OpenGitDiff {
+        title: String,
+        path: PathBuf,
+        old_text: String,
+        new_text: String,
+    },
     NewConversationInNewTab,
     ShowDeleteConfirmationDialog {
         conversation_id: AIConversationId,
@@ -148,6 +158,7 @@ pub enum LeftPanelEvent {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ToolPanelView {
     ProjectExplorer,
+    SourceControl,
     GlobalSearch { entry_focus: GlobalSearchEntryFocus },
     WarpDrive,
     ConversationListView,
@@ -191,6 +202,7 @@ mod active_view_state {
         }
 
         left_panel.update_active_file_tree_subscription_state(ctx);
+        left_panel.update_source_control_active_state(ctx);
     }
 }
 
@@ -218,6 +230,7 @@ pub struct LeftPanelView {
     close_button_mouse_state: MouseStateHandle,
     warp_drive_view: ViewHandle<DrivePanel>,
     conversation_list_view: ViewHandle<ConversationListView>,
+    source_control_view: ViewHandle<SourceControlView>,
     active_view: active_view_state::ActiveViewState,
     toolbelt_buttons: Vec<ToolbeltButtonConfig>,
     active_pane_group: Option<WeakViewHandle<PaneGroup>>,
@@ -269,12 +282,15 @@ impl LeftPanelView {
             ),
             (
                 ToolPanelView::ProjectExplorer
+                | ToolPanelView::SourceControl
                 | ToolPanelView::GlobalSearch { .. }
                 | ToolPanelView::WarpDrive,
                 ToolPanelAvailability::RequiresAi,
             )
             | (
-                ToolPanelView::ProjectExplorer | ToolPanelView::GlobalSearch { .. },
+                ToolPanelView::ProjectExplorer
+                | ToolPanelView::SourceControl
+                | ToolPanelView::GlobalSearch { .. },
                 ToolPanelAvailability::RequiresAccount,
             )
             | (_, ToolPanelAvailability::Available) => {
@@ -353,6 +369,10 @@ impl LeftPanelView {
         };
         let warp_drive_view = ctx.add_typed_action_view(DrivePanel::new);
         let conversation_list_view = ctx.add_typed_action_view(ConversationListView::new);
+        let source_control_view = ctx.add_typed_action_view(SourceControlView::new);
+        ctx.subscribe_to_view(&source_control_view, |me, _, event, ctx| {
+            me.handle_source_control_event(event, ctx);
+        });
 
         ctx.subscribe_to_view(&warp_drive_view, |_me, _, event, ctx| {
             ctx.emit(LeftPanelEvent::WarpDrive(event.clone()));
@@ -440,6 +460,10 @@ impl LeftPanelView {
                     view.set_root_directories(all_directories, view_ctx);
                 });
 
+                me.source_control_view.update(ctx, |view, ctx| {
+                    view.set_directories(local_paths.clone(), ctx);
+                });
+
                 // Directories are already in display order (most recent first) from the model
                 let local_directories = deduplicate_by_directory_name(local_paths);
                 let file_tree_view =
@@ -468,6 +492,7 @@ impl LeftPanelView {
             close_button_mouse_state: Default::default(),
             warp_drive_view,
             conversation_list_view,
+            source_control_view,
             active_view: active_view_state::new(active_view),
             toolbelt_buttons,
             active_pane_group: None,
@@ -544,6 +569,15 @@ impl LeftPanelView {
         ctx: &ViewContext<Self>,
     ) -> ToolbeltButtonConfig {
         match view {
+            ToolPanelView::SourceControl => ToolbeltButtonConfig {
+                icon: Icon::GitBranch,
+                active_icon: None,
+                tooltip_text: "Source control".to_string(),
+                action: LeftPanelAction::SourceControl,
+                render_with_active_state: false,
+                tooltip_keybinding: None,
+                tooltip_keybinding_names: Vec::new(),
+            },
             ToolPanelView::ProjectExplorer => {
                 let tooltip_keybinding_names = vec![
                     LEFT_PANEL_PROJECT_EXPLORER_BINDING_NAME,
@@ -863,6 +897,10 @@ impl LeftPanelView {
                     ctx,
                 );
             }
+            ToolPanelView::SourceControl => {
+                self.source_control_view
+                    .update(ctx, |view, ctx| view.focus_commit_message(ctx));
+            }
             ToolPanelView::WarpDrive => {
                 ctx.focus(&self.warp_drive_view);
                 self.warp_drive_view.update(ctx, |view, ctx| {
@@ -986,6 +1024,55 @@ impl LeftPanelView {
     }
 }
 
+impl LeftPanelView {
+    fn handle_source_control_event(
+        &mut self,
+        event: &SourceControlEvent,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        match event {
+            SourceControlEvent::OpenFile(path) => {
+                let settings = EditorSettings::as_ref(ctx);
+                let target = resolve_file_target_with_editor_choice(
+                    path,
+                    *settings.open_code_panels_file_editor,
+                    *settings.prefer_markdown_viewer,
+                    *settings.open_file_layout,
+                    None,
+                );
+                ctx.emit(LeftPanelEvent::OpenFileWithTarget {
+                    location: LocalOrRemotePath::Local(path.clone()),
+                    target,
+                    line_col: None,
+                });
+            }
+            SourceControlEvent::OpenDiff {
+                title,
+                path,
+                old_text,
+                new_text,
+            } => ctx.emit(LeftPanelEvent::OpenGitDiff {
+                title: title.clone(),
+                path: path.clone(),
+                old_text: old_text.clone(),
+                new_text: new_text.clone(),
+            }),
+        }
+    }
+
+    /// The Source Control panel polls git only while it is visible.
+    fn update_source_control_active_state(&self, ctx: &mut ViewContext<Self>) {
+        let is_open = self
+            .active_pane_group
+            .as_ref()
+            .and_then(|pane_group| pane_group.upgrade(ctx))
+            .is_some_and(|pane_group| pane_group.as_ref(ctx).left_panel_open);
+        let is_visible = is_open && self.active_view.get() == ToolPanelView::SourceControl;
+        self.source_control_view
+            .update(ctx, |view, ctx| view.set_is_active(is_visible, ctx));
+    }
+}
+
 impl Entity for LeftPanelView {
     type Event = LeftPanelEvent;
 }
@@ -1032,6 +1119,9 @@ impl LeftPanelView {
             button.render_with_active_state = match &button.action {
                 LeftPanelAction::ProjectExplorer => {
                     self.active_view.get() == ToolPanelView::ProjectExplorer
+                }
+                LeftPanelAction::SourceControl => {
+                    self.active_view.get() == ToolPanelView::SourceControl
                 }
                 LeftPanelAction::GlobalSearch { .. } => {
                     matches!(self.active_view.get(), ToolPanelView::GlobalSearch { .. })
@@ -1158,6 +1248,9 @@ impl LeftPanelView {
                     send_telemetry_from_ctx!(TelemetryEvent::GlobalSearchOpened, ctx);
                 }
             }
+            LeftPanelAction::SourceControl => {
+                active_view_state::set(self, ToolPanelView::SourceControl, ctx);
+            }
             LeftPanelAction::WarpDrive => {
                 active_view_state::set(self, ToolPanelView::WarpDrive, ctx);
                 if self.active_view_availability(ctx) == ToolPanelAvailability::Available {
@@ -1198,6 +1291,7 @@ impl LeftPanelView {
         }
 
         self.update_active_file_tree_subscription_state(ctx);
+        self.update_source_control_active_state(ctx);
     }
 
     fn deactivate_file_tree_view_for_pane_group(
@@ -1292,6 +1386,7 @@ impl View for LeftPanelView {
                         ctx.focus(&view);
                     }
                 }
+                ToolPanelView::SourceControl => ctx.focus(&self.source_control_view),
                 ToolPanelView::WarpDrive => ctx.focus(&self.warp_drive_view),
                 ToolPanelView::ConversationListView => ctx.focus(&self.conversation_list_view),
             }
@@ -1303,6 +1398,7 @@ impl View for LeftPanelView {
 
         let mouse_state_handles = vec![
             self.mouse_state_handles.project_explorer_button.clone(),
+            self.mouse_state_handles.source_control_button.clone(),
             self.mouse_state_handles
                 .conversation_list_view_button
                 .clone(),
@@ -1360,6 +1456,10 @@ impl View for LeftPanelView {
                     _ => Shrinkable::new(1.0, Container::new(Empty::new().finish()).finish())
                         .finish(),
                 },
+                ToolPanelView::SourceControl => {
+                    Shrinkable::new(1.0, ChildView::new(&self.source_control_view).finish())
+                        .finish()
+                }
                 ToolPanelView::WarpDrive => Shrinkable::new(
                     1.0,
                     Container::new(ChildView::new(&self.warp_drive_view).finish())

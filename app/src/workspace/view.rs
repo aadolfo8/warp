@@ -4388,6 +4388,7 @@ impl Workspace {
             // Restore which panel tab was active
             let active_view = match left_panel_snapshot.left_panel_displayed_tab {
                 LeftPanelDisplayedTab::FileTree => ToolPanelView::ProjectExplorer,
+                LeftPanelDisplayedTab::SourceControl => ToolPanelView::SourceControl,
                 LeftPanelDisplayedTab::GlobalSearch => ToolPanelView::GlobalSearch {
                     entry_focus: GlobalSearchEntryFocus::Results,
                 },
@@ -6728,6 +6729,14 @@ impl Workspace {
                 let pane_group = self.active_tab_pane_group().clone();
                 self.handle_file_tree_event(pane_group, pane_group_event, ctx);
             }
+            LeftPanelEvent::OpenGitDiff {
+                title,
+                path,
+                old_text,
+                new_text,
+            } => {
+                self.open_git_diff(title.clone(), path.clone(), old_text, new_text, ctx);
+            }
             LeftPanelEvent::WarpDrive(drive_event) => {
                 self.handle_warp_drive_event(drive_event, ctx);
             }
@@ -8970,6 +8979,53 @@ impl Workspace {
     }
 
     #[cfg(feature = "local_fs")]
+    /// Shows a diff from the Source Control panel as a read-only tab of the
+    /// tab's code pane, opening one (in a split) when there is none.
+    fn open_git_diff(
+        &mut self,
+        title: String,
+        path: PathBuf,
+        old_text: &str,
+        new_text: &str,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        let existing = self
+            .active_tab_pane_group()
+            .as_ref(ctx)
+            .code_panes(ctx)
+            .map(|(_, code_view)| code_view)
+            .next();
+        let replace_untitled = existing.is_none();
+        let code_view = match existing {
+            Some(code_view) => code_view,
+            None => {
+                self.open_code(
+                    CodeSource::New {
+                        default_directory: path.parent().map(Path::to_path_buf),
+                    },
+                    EditorLayout::SplitPane,
+                    None,
+                    false,
+                    &[],
+                    ctx,
+                );
+                let Some(code_view) = self
+                    .active_tab_pane_group()
+                    .as_ref(ctx)
+                    .code_panes(ctx)
+                    .map(|(_, code_view)| code_view)
+                    .next()
+                else {
+                    return;
+                };
+                code_view
+            }
+        };
+        code_view.update(ctx, |code_view, ctx| {
+            code_view.open_diff_tab(title, &path, old_text, new_text, replace_untitled, ctx);
+        });
+    }
+
     fn open_code(
         &mut self,
         source: CodeSource,
@@ -20818,6 +20874,7 @@ impl Workspace {
                         .unwrap_or(ToolPanelView::WarpDrive)
                     {
                         ToolPanelView::ProjectExplorer => "Project explorer",
+                        ToolPanelView::SourceControl => "Source control",
                         ToolPanelView::GlobalSearch { .. } => "Global search",
                         ToolPanelView::WarpDrive => "Warp Drive",
                         ToolPanelView::ConversationListView => "Agent conversations",
@@ -20872,6 +20929,7 @@ impl Workspace {
                 .unwrap_or(ToolPanelView::WarpDrive)
             {
                 ToolPanelView::ProjectExplorer => "Project explorer",
+                        ToolPanelView::SourceControl => "Source control",
                 ToolPanelView::GlobalSearch { .. } => "Global search",
                 ToolPanelView::WarpDrive => "Warp Drive",
                 ToolPanelView::ConversationListView => "Agent conversations",
@@ -24072,6 +24130,9 @@ impl Workspace {
         let mut views = vec![];
         if cfg!(feature = "local_fs") && *CodeSettings::as_ref(ctx).show_project_explorer.value() {
             views.push(ToolPanelView::ProjectExplorer);
+        }
+        if cfg!(feature = "local_fs") {
+            views.push(ToolPanelView::SourceControl);
         }
         if FeatureFlag::AgentViewConversationListView.is_enabled()
             && *AISettings::as_ref(ctx).show_conversation_history
