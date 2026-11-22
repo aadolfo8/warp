@@ -90,12 +90,6 @@ pub struct RepoStatus {
     pub conflicted: Vec<FileChange>,
 }
 
-impl RepoStatus {
-    pub fn change_count(&self) -> usize {
-        self.staged.len() + self.unstaged.len() + self.conflicted.len()
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Commit {
     pub sha: String,
@@ -132,11 +126,14 @@ pub async fn status(repo: &Path) -> Result<RepoStatus> {
     Ok(parse_status(&output))
 }
 
-/// The commits reachable from `refs` (all branches when `refs` is empty),
-/// children before parents so the graph can be drawn.
-pub async fn history(repo: &Path, refs: &[String]) -> Result<Vec<Commit>> {
+/// The commits reachable from `refs` (all branches when `refs` is empty).
+/// `topo_order` lists children before parents, which the graph needs.
+pub async fn history(repo: &Path, refs: &[String], topo_order: bool) -> Result<Vec<Commit>> {
     let limit = format!("-n{HISTORY_LIMIT}");
-    let mut args = vec!["log", "--topo-order", &limit, LOG_FORMAT];
+    let mut args = vec!["log", &limit, LOG_FORMAT];
+    if topo_order {
+        args.push("--topo-order");
+    }
     if refs.is_empty() {
         args.push("--all");
     } else {

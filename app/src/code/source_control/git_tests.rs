@@ -16,7 +16,8 @@ fn status_reads_branch_and_ahead_behind() {
     assert_eq!(status.branch.as_deref(), Some("main"));
     assert_eq!(status.upstream.as_deref(), Some("origin/main"));
     assert_eq!((status.ahead, status.behind), (2, 3));
-    assert_eq!(status.change_count(), 0);
+    assert!(status.staged.is_empty() && status.unstaged.is_empty());
+    assert!(status.conflicted.is_empty());
 }
 
 #[test]
@@ -66,7 +67,6 @@ fn status_splits_staged_and_unstaged_changes() {
         status.conflicted,
         vec![change("conflict.ts", ChangeKind::Conflicted)]
     );
-    assert_eq!(status.change_count(), 7);
 }
 
 #[test]

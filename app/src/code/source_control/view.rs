@@ -43,7 +43,7 @@ const ROW_PADDING: f32 = 3.;
 const LANE_WIDTH: f32 = 14.;
 const LINE_WIDTH: f32 = 2.;
 const NODE_SIZE: f32 = 10.;
-const COMMIT_ROW_HEIGHT: f32 = 40.;
+const GRAPH_ROW_HEIGHT: f32 = 26.;
 const FILE_ROW_HEIGHT: f32 = 24.;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -52,6 +52,7 @@ pub enum Section {
     Changes,
     Conflicts,
     Commits,
+    Graph,
 }
 
 #[derive(Debug, Clone)]
@@ -73,8 +74,12 @@ pub enum SourceControlAction {
     },
     OpenFile(String),
     ToggleSection(Section),
-    ToggleCommit(String),
+    ToggleCommit {
+        section: Section,
+        sha: String,
+    },
     OpenCommitFile {
+        section: Section,
         sha: String,
         path: String,
     },
@@ -106,11 +111,15 @@ pub struct SourceControlView {
     directories: Vec<PathBuf>,
     repo: Option<PathBuf>,
     status: Option<RepoStatus>,
+    /// The current branch's commits, for the Commits section.
     history: Vec<Commit>,
-    /// The graph row drawn next to each commit of `history`.
+    /// The commits of the Graph section, children before parents.
+    graph_history: Vec<Commit>,
+    /// The graph row drawn next to each commit of `graph_history`.
     graph: Vec<GraphRow>,
     show_all_branches: bool,
-    expanded_commit: Option<(String, Vec<FileChange>)>,
+    /// The commit whose files are listed, and in which section.
+    expanded_commit: Option<(Section, String, Vec<FileChange>)>,
     collapsed: Vec<Section>,
     /// Path (or "*" for all changes) waiting for a second click to discard.
     pending_discard: Option<String>,
@@ -150,6 +159,7 @@ impl SourceControlView {
             repo: None,
             status: None,
             history: Vec::new(),
+            graph_history: Vec::new(),
             graph: Vec::new(),
             show_all_branches: false,
             expanded_commit: None,
@@ -185,6 +195,7 @@ impl SourceControlView {
                     me.repo = repo;
                     me.status = None;
                     me.history.clear();
+                    me.graph_history.clear();
                     me.graph.clear();
                     me.expanded_commit = None;
                     me.pending_discard = None;
@@ -234,10 +245,11 @@ impl SourceControlView {
                     }
                     refs
                 };
-                let history = git::history(&repo, &refs).await;
-                (status, history)
+                let history = git::history(&repo, &["HEAD".to_owned()], false).await;
+                let graph_history = git::history(&repo, &refs, true).await;
+                (status, history, graph_history)
             },
-            move |me, (status, history), ctx| {
+            move |me, (status, history, graph_history), ctx| {
                 if me.refresh_epoch != epoch {
                     return;
                 }
@@ -245,11 +257,14 @@ impl SourceControlView {
                     Ok(status) => me.status = Some(status),
                     Err(err) => me.error = Some(format!("{err:#}")),
                 }
-                if let Ok(history) = history
-                    && history != me.history
-                {
-                    me.graph = graph::layout(&history);
+                if let Ok(history) = history {
                     me.history = history;
+                }
+                if let Ok(graph_history) = graph_history
+                    && graph_history != me.graph_history
+                {
+                    me.graph = graph::layout(&graph_history);
+                    me.graph_history = graph_history;
                 }
                 me.update_mouse_states();
                 ctx.notify();
@@ -312,7 +327,7 @@ impl SourceControlView {
             Section::Staged => &status.staged,
             Section::Changes => &status.unstaged,
             Section::Conflicts => &status.conflicted,
-            Section::Commits => return None,
+            Section::Commits | Section::Graph => return None,
         };
         list.iter().find(|change| change.path == path).cloned()
     }
@@ -358,23 +373,31 @@ impl SourceControlView {
     }
 
     /// Opens the diff of a file changed by a commit against its first parent.
-    fn open_commit_file(&mut self, sha: &str, path: &str, ctx: &mut ViewContext<Self>) {
+    fn find_commit(&self, section: Section, sha: &str) -> Option<Commit> {
+        let commits = if section == Section::Graph {
+            &self.graph_history
+        } else {
+            &self.history
+        };
+        commits.iter().find(|commit| commit.sha == sha).cloned()
+    }
+
+    fn open_commit_file(
+        &mut self,
+        section: Section,
+        sha: &str,
+        path: &str,
+        ctx: &mut ViewContext<Self>,
+    ) {
         let Some(repo) = self.repo.clone() else {
             return;
         };
-        let Some(commit) = self
-            .history
-            .iter()
-            .find(|commit| commit.sha == sha)
-            .cloned()
-        else {
+        let Some(commit) = self.find_commit(section, sha) else {
             return;
         };
         let Some(change) = self
-            .expanded_commit
-            .as_ref()
-            .filter(|(expanded, _)| expanded == sha)
-            .and_then(|(_, files)| files.iter().find(|change| change.path == path).cloned())
+            .expanded_files(section, sha)
+            .and_then(|files| files.iter().find(|change| change.path == path).cloned())
         else {
             return;
         };
@@ -406,30 +429,20 @@ impl SourceControlView {
         );
     }
 
-    fn toggle_commit(&mut self, sha: &str, ctx: &mut ViewContext<Self>) {
-        if self
-            .expanded_commit
-            .as_ref()
-            .is_some_and(|(expanded, _)| expanded == sha)
-        {
+    fn toggle_commit(&mut self, section: Section, sha: &str, ctx: &mut ViewContext<Self>) {
+        if self.expanded_files(section, sha).is_some() {
             self.expanded_commit = None;
             ctx.notify();
             return;
         }
-        let (Some(repo), Some(commit)) = (
-            self.repo.clone(),
-            self.history
-                .iter()
-                .find(|commit| commit.sha == sha)
-                .cloned(),
-        ) else {
+        let (Some(repo), Some(commit)) = (self.repo.clone(), self.find_commit(section, sha)) else {
             return;
         };
         ctx.spawn(
             async move { (commit.sha.clone(), git::commit_files(&repo, &commit).await) },
-            |me, (sha, files), ctx| {
+            move |me, (sha, files), ctx| {
                 match files {
-                    Ok(files) => me.expanded_commit = Some((sha, files)),
+                    Ok(files) => me.expanded_commit = Some((section, sha, files)),
                     Err(err) => me.error = Some(format!("{err:#}")),
                 }
                 me.update_mouse_states();
@@ -450,16 +463,21 @@ impl SourceControlView {
                 keys.extend(list.iter().map(|change| row_key(section, &change.path)));
             }
         }
-        keys.extend(
-            self.history
-                .iter()
-                .map(|commit| format!("commit:{}", commit.sha)),
-        );
-        if let Some((sha, files)) = &self.expanded_commit {
+        for (section, commits) in [
+            (Section::Commits, &self.history),
+            (Section::Graph, &self.graph_history),
+        ] {
+            keys.extend(
+                commits
+                    .iter()
+                    .map(|commit| format!("commit:{section:?}:{}", commit.sha)),
+            );
+        }
+        if let Some((section, sha, files)) = &self.expanded_commit {
             keys.extend(
                 files
                     .iter()
-                    .map(|change| format!("commit-file:{sha}:{}", change.path)),
+                    .map(|change| format!("commit-file:{section:?}:{sha}:{}", change.path)),
             );
         }
         for section in [
@@ -467,6 +485,7 @@ impl SourceControlView {
             Section::Changes,
             Section::Conflicts,
             Section::Commits,
+            Section::Graph,
         ] {
             keys.push(format!("section:{section:?}"));
         }
@@ -645,13 +664,15 @@ impl TypedActionView for SourceControlView {
                 }
                 ctx.notify();
             }
-            SourceControlAction::ToggleCommit(sha) => self.toggle_commit(sha, ctx),
+            SourceControlAction::ToggleCommit { section, sha } => {
+                self.toggle_commit(*section, sha, ctx)
+            }
             SourceControlAction::ToggleAllBranches => {
                 self.show_all_branches = !self.show_all_branches;
                 self.refresh(ctx);
             }
-            SourceControlAction::OpenCommitFile { sha, path } => {
-                self.open_commit_file(sha, path, ctx)
+            SourceControlAction::OpenCommitFile { section, sha, path } => {
+                self.open_commit_file(*section, sha, path, ctx)
             }
         }
     }
@@ -696,6 +717,7 @@ impl View for SourceControlView {
             self.render_changes(&mut list, Section::Changes, &status.unstaged, appearance);
         }
         self.render_history(&mut list, appearance);
+        self.render_graph_section(&mut list, appearance);
 
         let theme = appearance.theme();
         column.add_child(
@@ -935,6 +957,7 @@ impl SourceControlView {
             Section::Changes => "Changes",
             Section::Conflicts => "Merge Changes",
             Section::Commits => "Commits",
+            Section::Graph => "Graph",
         };
         let actions: Vec<(Icon, SourceControlAction)> = match section {
             Section::Staged => vec![(Icon::Minus, SourceControlAction::UnstageAll)],
@@ -1140,13 +1163,9 @@ impl SourceControlView {
     fn render_history(&self, list: &mut Flex, appearance: &Appearance) {
         list.add_child(self.render_section_header(
             Section::Commits,
-            if self.show_all_branches {
-                "Commits · All Branches"
-            } else {
-                "Commits"
-            },
+            "Commits",
             None,
-            vec![(Icon::GitBranch, SourceControlAction::ToggleAllBranches)],
+            Vec::new(),
             appearance,
         ));
         if self.collapsed.contains(&Section::Commits) {
@@ -1156,54 +1175,111 @@ impl SourceControlView {
             list.add_child(render_hint("No commits yet.", appearance));
             return;
         }
-        let graph_width = self.graph.iter().map(|row| row.width).max().unwrap_or(1);
-        for (commit, graph_row) in self.history.iter().zip(&self.graph) {
-            let expanded_files = self
-                .expanded_commit
-                .as_ref()
-                .filter(|(sha, _)| *sha == commit.sha)
-                .map(|(_, files)| files);
+        for commit in &self.history {
+            let files = self.expanded_files(Section::Commits, &commit.sha);
             list.add_child(self.render_commit_row(
+                Section::Commits,
                 commit,
-                graph_row,
-                graph_width,
-                expanded_files.is_some(),
+                None,
+                files.is_some(),
                 appearance,
             ));
-            if let Some(files) = expanded_files {
-                for change in files {
-                    list.add_child(self.render_commit_file_row(
-                        commit,
-                        change,
-                        &graph_row.lanes_below,
-                        graph_width,
-                        appearance,
-                    ));
-                }
-                if files.is_empty() {
-                    list.add_child(render_hint("No file changes.", appearance));
-                }
+            if let Some(files) = files {
+                self.render_expanded_files(list, Section::Commits, commit, files, None, appearance);
             }
         }
     }
 
+    fn render_graph_section(&self, list: &mut Flex, appearance: &Appearance) {
+        list.add_child(self.render_section_header(
+            Section::Graph,
+            if self.show_all_branches {
+                "Graph · All Branches"
+            } else {
+                "Graph"
+            },
+            None,
+            vec![(Icon::GitBranch, SourceControlAction::ToggleAllBranches)],
+            appearance,
+        ));
+        if self.collapsed.contains(&Section::Graph) {
+            return;
+        }
+        if self.graph_history.is_empty() {
+            list.add_child(render_hint("No commits yet.", appearance));
+            return;
+        }
+        let graph_width = self.graph.iter().map(|row| row.width).max().unwrap_or(1);
+        for (commit, graph_row) in self.graph_history.iter().zip(&self.graph) {
+            let files = self.expanded_files(Section::Graph, &commit.sha);
+            list.add_child(self.render_commit_row(
+                Section::Graph,
+                commit,
+                Some((graph_row, graph_width)),
+                files.is_some(),
+                appearance,
+            ));
+            if let Some(files) = files {
+                self.render_expanded_files(
+                    list,
+                    Section::Graph,
+                    commit,
+                    files,
+                    Some((&graph_row.lanes_below, graph_width)),
+                    appearance,
+                );
+            }
+        }
+    }
+
+    fn expanded_files(&self, section: Section, sha: &str) -> Option<&Vec<FileChange>> {
+        self.expanded_commit
+            .as_ref()
+            .filter(|(expanded_section, expanded_sha, _)| {
+                *expanded_section == section && expanded_sha == sha
+            })
+            .map(|(_, _, files)| files)
+    }
+
+    fn render_expanded_files(
+        &self,
+        list: &mut Flex,
+        section: Section,
+        commit: &Commit,
+        files: &[FileChange],
+        graph: Option<(&[(usize, usize)], usize)>,
+        appearance: &Appearance,
+    ) {
+        for change in files {
+            list.add_child(self.render_commit_file_row(section, commit, change, graph, appearance));
+        }
+        if files.is_empty() {
+            list.add_child(render_hint("No file changes.", appearance));
+        }
+    }
+
+    /// A commit of the Commits list (two lines, with a chevron) or, given its
+    /// graph row, a one-line row of the Graph section.
     fn render_commit_row(
         &self,
+        section: Section,
         commit: &Commit,
-        graph_row: &GraphRow,
-        graph_width: usize,
+        graph: Option<(&GraphRow, usize)>,
         expanded: bool,
         appearance: &Appearance,
     ) -> Box<dyn Element> {
-        let graph_row = graph_row.clone();
-        let mouse = self.mouse_for(&format!("commit:{}", commit.sha)).row;
+        let mouse = self
+            .mouse_for(&format!("commit:{section:?}:{}", commit.sha))
+            .row;
         let sha = commit.sha.clone();
         let subject = commit.subject.clone();
         let details = format!(
             "{} · {} · {}",
             commit.short_sha, commit.author, commit.relative_date
         );
+        let author_date = format!("{} · {}", commit.author, commit.relative_date);
         let refs = commit.refs.clone();
+        let graph = graph.map(|(row, width)| (row.clone(), width));
         Hoverable::new(mouse, move |state| {
             let theme = appearance.theme();
             let highlight = ItemHighlightState::new(expanded, state);
@@ -1211,6 +1287,22 @@ impl SourceControlView {
             let sub_color = blended_colors::text_sub(theme, theme.background());
 
             let mut first_line = Flex::row().with_cross_axis_alignment(CrossAxisAlignment::Center);
+            if graph.is_none() {
+                first_line.add_child(icon(
+                    if expanded {
+                        Icon::ChevronDown
+                    } else {
+                        Icon::ChevronRight
+                    },
+                    sub_color,
+                ));
+                first_line.add_child(
+                    Container::new(icon(Icon::GitCommit, sub_color))
+                        .with_margin_left(2.)
+                        .with_margin_right(6.)
+                        .finish(),
+                );
+            }
             for name in &refs {
                 first_line.add_child(render_ref_chip(name, appearance));
             }
@@ -1227,41 +1319,76 @@ impl SourceControlView {
                 .finish(),
             );
 
-            let second_line = Container::new(
-                Clipped::new(
-                    Text::new_inline(details.clone(), appearance.ui_font_family(), FONT_SIZE - 2.)
-                        .with_color(sub_color)
+            let content: Box<dyn Element> = match &graph {
+                None => {
+                    let second_line = Container::new(
+                        Clipped::new(
+                            Text::new_inline(
+                                details.clone(),
+                                appearance.ui_font_family(),
+                                FONT_SIZE - 2.,
+                            )
+                            .with_color(sub_color)
+                            .finish(),
+                        )
                         .finish(),
-                )
-                .finish(),
-            )
-            .finish();
+                    )
+                    .with_margin_left(38.)
+                    .finish();
+                    Container::new(
+                        Flex::column()
+                            .with_cross_axis_alignment(CrossAxisAlignment::Stretch)
+                            .with_child(first_line.finish())
+                            .with_child(second_line)
+                            .finish(),
+                    )
+                    .with_padding_top(ROW_PADDING)
+                    .with_padding_bottom(ROW_PADDING)
+                    .finish()
+                }
+                Some((graph_row, graph_width)) => {
+                    // Like VS Code's graph: author and date after the message, dimmed.
+                    first_line.add_child(
+                        Container::new(
+                            Text::new_inline(
+                                author_date.clone(),
+                                appearance.ui_font_family(),
+                                FONT_SIZE - 2.,
+                            )
+                            .with_color(sub_color)
+                            .finish(),
+                        )
+                        .with_margin_left(8.)
+                        .finish(),
+                    );
+                    let background: ColorU = theme.background().into();
+                    ConstrainedBox::new(
+                        Flex::row()
+                            .with_main_axis_size(MainAxisSize::Max)
+                            .with_cross_axis_alignment(CrossAxisAlignment::Center)
+                            .with_child(render_graph_row(
+                                graph_row,
+                                *graph_width,
+                                GRAPH_ROW_HEIGHT,
+                                background,
+                            ))
+                            .with_child(
+                                Shrinkable::new(
+                                    1.,
+                                    Container::new(first_line.finish())
+                                        .with_margin_left(6.)
+                                        .finish(),
+                                )
+                                .finish(),
+                            )
+                            .finish(),
+                    )
+                    .with_height(GRAPH_ROW_HEIGHT)
+                    .finish()
+                }
+            };
 
-            let text = Flex::column()
-                .with_cross_axis_alignment(CrossAxisAlignment::Stretch)
-                .with_child(first_line.finish())
-                .with_child(second_line)
-                .finish();
-            let background: ColorU = theme.background().into();
-            let row = Flex::row()
-                .with_main_axis_size(MainAxisSize::Max)
-                .with_cross_axis_alignment(CrossAxisAlignment::Center)
-                .with_child(render_graph_row(
-                    &graph_row,
-                    graph_width,
-                    COMMIT_ROW_HEIGHT,
-                    background,
-                ))
-                .with_child(
-                    Shrinkable::new(1., Container::new(text).with_margin_left(4.).finish())
-                        .finish(),
-                )
-                .finish();
-            let mut container = Container::new(
-                ConstrainedBox::new(row)
-                    .with_height(COMMIT_ROW_HEIGHT)
-                    .finish(),
-            );
+            let mut container = Container::new(content);
             if let Some(background) = highlight.background_color(appearance) {
                 container = container.with_background(background);
             }
@@ -1272,28 +1399,34 @@ impl SourceControlView {
         })
         .with_cursor(Cursor::PointingHand)
         .on_click(move |event_ctx: &mut EventContext, _, _| {
-            event_ctx.dispatch_typed_action(SourceControlAction::ToggleCommit(sha.clone()));
+            event_ctx.dispatch_typed_action(SourceControlAction::ToggleCommit {
+                section,
+                sha: sha.clone(),
+            });
         })
         .finish()
     }
 
     fn render_commit_file_row(
         &self,
+        section: Section,
         commit: &Commit,
         change: &FileChange,
-        lanes: &[(usize, usize)],
-        graph_width: usize,
+        graph: Option<(&[(usize, usize)], usize)>,
         appearance: &Appearance,
     ) -> Box<dyn Element> {
-        let lanes = lanes.to_vec();
         let mouse = self
-            .mouse_for(&format!("commit-file:{}:{}", commit.sha, change.path))
+            .mouse_for(&format!(
+                "commit-file:{section:?}:{}:{}",
+                commit.sha, change.path
+            ))
             .row;
         let sha = commit.sha.clone();
         let path = change.path.clone();
         let file_name = change.file_name().to_owned();
         let directory = change.directory().to_owned();
         let kind = change.kind;
+        let graph = graph.map(|(lanes, width)| (lanes.to_vec(), width));
         Hoverable::new(mouse, move |state| {
             let theme = appearance.theme();
             let highlight = ItemHighlightState::new(false, state);
@@ -1301,10 +1434,16 @@ impl SourceControlView {
             let mut row = Flex::row()
                 .with_main_axis_size(MainAxisSize::Max)
                 .with_cross_axis_alignment(CrossAxisAlignment::Center);
-            row.add_child(render_graph_lines(&lanes, graph_width, FILE_ROW_HEIGHT));
+            let icon_margin = match &graph {
+                Some((lanes, graph_width)) => {
+                    row.add_child(render_graph_lines(lanes, *graph_width, FILE_ROW_HEIGHT));
+                    14.
+                }
+                None => 38.,
+            };
             row.add_child(
                 Container::new(file_icon(&file_name))
-                    .with_margin_left(8.)
+                    .with_margin_left(icon_margin)
                     .with_margin_right(6.)
                     .finish(),
             );
@@ -1357,6 +1496,7 @@ impl SourceControlView {
         .with_cursor(Cursor::PointingHand)
         .on_click(move |event_ctx: &mut EventContext, _, _| {
             event_ctx.dispatch_typed_action(SourceControlAction::OpenCommitFile {
+                section,
                 sha: sha.clone(),
                 path: path.clone(),
             });
