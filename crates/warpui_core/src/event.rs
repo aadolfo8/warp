@@ -81,6 +81,21 @@ pub struct ModifiersState {
     pub func: bool,
 }
 
+impl ModifiersState {
+    /// Whether the modifier that follows links (go to definition, open URL)
+    /// is held. See [`is_link_modifier`].
+    pub fn link_modifier(&self) -> bool {
+        is_link_modifier(self.cmd, self.ctrl)
+    }
+}
+
+/// The modifier that turns text into a clickable link: Cmd on macOS and Ctrl
+/// elsewhere, like VS Code. On Windows and Linux `cmd` is the Windows/Super
+/// key, which the OS usually keeps for itself.
+pub fn is_link_modifier(cmd: bool, ctrl: bool) -> bool {
+    if cfg!(target_os = "macos") { cmd } else { ctrl }
+}
+
 #[derive(Copy, Clone, Debug)]
 pub enum KeyState {
     Pressed,
@@ -152,6 +167,7 @@ pub enum Event {
     MouseMoved {
         position: Vector2F,
         cmd: bool,
+        ctrl: bool,
         shift: bool,
         /// Whether this mouse event was initiated by the user or by Warp synthetically.
         /// We create such synthetic mouse events for certain behaviors behaviors within
@@ -231,6 +247,7 @@ impl Event {
     pub fn to_synthetic_mouse_move_event(&self) -> Option<Self> {
         if let Event::MouseMoved {
             cmd,
+            ctrl,
             shift,
             position,
             is_synthetic: _,
@@ -238,6 +255,7 @@ impl Event {
         {
             Some(Event::MouseMoved {
                 cmd: *cmd,
+                ctrl: *ctrl,
                 shift: *shift,
                 position: *position,
                 is_synthetic: true,
@@ -370,11 +388,13 @@ impl Scale for Event {
             Event::MouseMoved {
                 position,
                 cmd,
+                ctrl,
                 shift,
                 is_synthetic,
             } => Event::MouseMoved {
                 position: position.scale_up(zoom_factor),
                 cmd,
+                ctrl,
                 shift,
                 is_synthetic,
             },

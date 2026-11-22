@@ -773,6 +773,7 @@ pub(super) async fn run_step(
                                 Event::MouseMoved {
                                     position: center,
                                     cmd: false,
+                                    ctrl: false,
                                     shift: false,
                                     is_synthetic: false,
                                 },

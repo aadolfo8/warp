@@ -362,6 +362,15 @@ impl PersistedWorkspace {
         self.set_lsp_server_for_path(path, server_type, EnablementState::Yes);
     }
 
+    /// Whether the user explicitly turned `server_type` off for the repo
+    /// containing `path` (as opposed to never having enabled it).
+    pub fn is_lsp_server_disabled_for_path(&self, path: &Path, server_type: LSPServerType) -> bool {
+        self.root_for_workspace(path)
+            .and_then(|root| self.workspaces.get(root))
+            .and_then(|workspace| workspace.language_servers.get(&server_type))
+            == Some(&EnablementState::No)
+    }
+
     /// Given a repo path, disables the specified LSP server.
     pub fn disable_lsp_server_for_path(&mut self, path: &Path, server_type: LSPServerType) {
         self.set_lsp_server_for_path(path, server_type, EnablementState::No);

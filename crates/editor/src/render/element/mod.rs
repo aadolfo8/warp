@@ -17,7 +17,7 @@ use warpui_core::elements::new_scrollable::{NewScrollableElement, ScrollableAxis
 use warpui_core::elements::{
     Axis, Border, Dash, Point, ScrollData, ScrollableElement, Vector2FExt, ZIndex,
 };
-use warpui_core::event::{DispatchedEvent, ModifiersState};
+use warpui_core::event::{DispatchedEvent, ModifiersState, is_link_modifier};
 use warpui_core::geometry::rect::RectF;
 use warpui_core::geometry::vector::{Vector2F, vec2f};
 use warpui_core::platform::Cursor;
@@ -689,7 +689,7 @@ impl<V: EditorView> RichTextElement<V> {
         ) {
             let actions = V::Action::left_mouse_up(
                 location,
-                modifiers.cmd,
+                modifiers.link_modifier(),
                 modifiers.shift,
                 &self.parent_view,
                 app,
@@ -1248,11 +1248,14 @@ impl<V: EditorView> Element for RichTextElement<V> {
                 mouse_position,
                 modifiers,
                 ..
-            }) => self.handle_mouse_moved(*mouse_position, modifiers.cmd, app, ctx),
+            }) => self.handle_mouse_moved(*mouse_position, modifiers.link_modifier(), app, ctx),
             // Always handle mouse-moved events, even if a block did. This is important for cursor state.
-            Some(Event::MouseMoved { position, cmd, .. }) => {
-                self.handle_mouse_moved(*position, *cmd, app, ctx)
-            }
+            Some(Event::MouseMoved {
+                position,
+                cmd,
+                ctrl,
+                ..
+            }) => self.handle_mouse_moved(*position, is_link_modifier(*cmd, *ctrl), app, ctx),
             Some(Event::MiddleMouseDown { position, .. }) => self.middle_click(*position, app, ctx),
             Some(Event::RightMouseDown { position, .. }) if !block_handled => {
                 self.handle_right_mouse_down(*position, app, ctx)

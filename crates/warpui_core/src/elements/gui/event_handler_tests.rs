@@ -316,6 +316,7 @@ fn test_default_mouse_in_behavior() {
                 Event::MouseMoved {
                     position: vec2f(90., 10.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -328,6 +329,7 @@ fn test_default_mouse_in_behavior() {
                 Event::MouseMoved {
                     position: vec2f(10., 90.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -340,6 +342,7 @@ fn test_default_mouse_in_behavior() {
                 Event::MouseMoved {
                     position: vec2f(10., 10.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -352,6 +355,7 @@ fn test_default_mouse_in_behavior() {
                 Event::MouseMoved {
                     position: vec2f(90., 90.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -404,6 +408,7 @@ fn test_mouse_in_behavior_dont_fire_on_synthetic_events() {
                 Event::MouseMoved {
                     position: vec2f(90., 10.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: true,
                 },
@@ -465,6 +470,7 @@ fn test_mouse_in_behavior_dont_fire_when_covered() {
                 Event::MouseMoved {
                     position: vec2f(90., 10.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -477,6 +483,7 @@ fn test_mouse_in_behavior_dont_fire_when_covered() {
                 Event::MouseMoved {
                     position: vec2f(10., 90.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -489,6 +496,7 @@ fn test_mouse_in_behavior_dont_fire_when_covered() {
                 Event::MouseMoved {
                     position: vec2f(10., 10.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },
@@ -501,6 +509,7 @@ fn test_mouse_in_behavior_dont_fire_when_covered() {
                 Event::MouseMoved {
                     position: vec2f(90., 90.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 },

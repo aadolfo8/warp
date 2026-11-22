@@ -1487,8 +1487,9 @@ impl CodeEditorView {
         // Clicking into the editor should restore focus.
         self.focus(ctx);
 
-        // If there is a hovered symbol range, don't handle the cmd-click.
-        if modifiers.cmd
+        // If there is a hovered symbol range, don't handle the cmd-click
+        // (ctrl-click outside macOS).
+        if modifiers.link_modifier()
             && let Some(range) = self.model.as_ref(ctx).hovered_symbol_range()
             && range.range().contains(&offset)
         {

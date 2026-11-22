@@ -1176,6 +1176,7 @@ impl EventLoop {
                     _ => Some(ConvertedEvent::Event(crate::event::Event::MouseMoved {
                         position: window_state.last_cursor_position.to_vec2f(),
                         cmd: window_state.modifiers.super_key(),
+                        ctrl: window_state.modifiers.control_key(),
                         shift: window_state.modifiers.shift_key(),
                         is_synthetic: false,
                     })),

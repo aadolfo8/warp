@@ -1039,6 +1039,7 @@ pub fn test_waterfall_input_text_selection() -> Builder {
                 .with_event(Event::MouseMoved {
                     position: Vector2F::new(400., 300.),
                     cmd: false,
+                    ctrl: false,
                     shift: false,
                     is_synthetic: false,
                 })
@@ -2353,6 +2354,7 @@ pub fn test_hover_over_menu() -> Builder {
             hover_every_15_pixels = hover_every_15_pixels.with_event(Event::MouseMoved {
                 position: Vector2F::new((x * 15) as f32, (y * 15) as f32),
                 cmd: false,
+                ctrl: false,
                 shift: false,
                 is_synthetic: false,
             })
@@ -3906,6 +3908,7 @@ pub fn test_command_xray_hover() -> Builder {
                         Event::MouseMoved {
                             position,
                             cmd: false,
+                            ctrl: false,
                             shift: false,
                             is_synthetic: false,
                         }
@@ -3942,6 +3945,7 @@ pub fn test_command_xray_hover() -> Builder {
                         Event::MouseMoved {
                             position,
                             cmd: false,
+                            ctrl: false,
                             shift: false,
                             is_synthetic: false,
                         }
@@ -4005,6 +4009,7 @@ pub fn test_command_xray_for_partial_command() -> Builder {
                         Event::MouseMoved {
                             position,
                             cmd: false,
+                            ctrl: false,
                             shift: false,
                             is_synthetic: false,
                         }
