@@ -219,6 +219,8 @@ struct TabDataMouseStateHandles {
 #[derive(Clone)]
 pub struct TabData {
     location: Option<LocalOrRemotePath>,
+    /// Title for tabs without a file, like diffs from the Source Control panel.
+    title: Option<String>,
     editor_view: ViewHandle<LocalCodeEditorView>,
     mouse_state_handles: TabDataMouseStateHandles,
     preview: bool,
@@ -434,6 +436,63 @@ impl CodeView {
         })
     }
 
+    /// Opens a read-only tab showing `new_text` against `old_text` with the
+    /// changes expanded inline, like VS Code's diff editor. `path` only picks
+    /// the language; the file on disk is not touched.
+    pub fn open_diff_tab(
+        &mut self,
+        title: String,
+        path: &Path,
+        old_text: &str,
+        new_text: &str,
+        replace_untitled: bool,
+        ctx: &mut ViewContext<Self>,
+    ) {
+        // A code pane opened just for this diff starts with an empty "Untitled" tab.
+        if replace_untitled
+            && self.tab_group.len() == 1
+            && self.tab_group[0].location.is_none()
+            && self.tab_group[0].title.is_none()
+        {
+            self.tab_group.clear();
+            self.active_tab_index = 0;
+        }
+        if let Some(existing_index) = self
+            .tab_group
+            .iter()
+            .position(|tab| tab.location.is_none() && tab.title.as_deref() == Some(&title))
+        {
+            self.tab_group.remove(existing_index);
+            if self.active_tab_index >= existing_index && self.active_tab_index > 0 {
+                self.active_tab_index -= 1;
+            }
+        }
+
+        let mut tab = self.build_tab_data(None, false, ctx);
+        tab.title = Some(title);
+        tab.editor_view.update(ctx, |local_editor, ctx| {
+            local_editor.set_new_file(false);
+            local_editor.reset_with_state(
+                warp_editor::content::buffer::InitialBufferState::plain_text(new_text),
+                ctx,
+            );
+            local_editor.editor().update(ctx, |editor, ctx| {
+                if let Ok(language_path) =
+                    warp_util::standardized_path::StandardizedPath::try_from_local(path)
+                {
+                    editor.set_language_with_path(&language_path, ctx);
+                }
+                editor.set_base(old_text, true, ctx);
+                editor.expand_diffs(ctx);
+                editor.set_interaction_state(InteractionState::Selectable, ctx);
+            });
+        });
+        self.tab_group.push(tab);
+        let index = self.tab_group.len() - 1;
+        self.set_active_tab_index(index, ctx);
+        self.set_title(false, ctx);
+    }
+
     /// Construct an editor for a new (unsaved) file with no file backing.
     fn construct_new_file_editor(
         &mut self,
@@ -630,6 +689,7 @@ impl CodeView {
 
         TabData {
             location: tab_location,
+            title: None,
             editor_view: code_editor,
             mouse_state_handles: Default::default(),
             preview,
@@ -860,7 +920,10 @@ impl CodeView {
 
         let title = match &file_location {
             Some(location) => display_path_with_host(location, false, ctx),
-            None => "Untitled".to_string(),
+            None => self
+                .tab_at(self.active_tab_index)
+                .and_then(|tab| tab.title.clone())
+                .unwrap_or_else(|| "Untitled".to_string()),
         };
 
         self.pane_configuration.update(ctx, |pane_config, ctx| {
@@ -1629,6 +1692,7 @@ impl CodeView {
             .as_ref()
             .map(|loc| display_name_with_host(loc, app))
             .filter(|n| !n.is_empty())
+            .or_else(|| tab_data.title.clone())
             .unwrap_or_else(|| "Untitled".to_string());
         let language_icon =
             icon_from_file_path(&file_name, appearance, ItemHighlightState::Default);
@@ -2007,6 +2071,7 @@ impl CodeView {
                     .as_ref()
                     .map(|loc| display_name_with_host(loc, app))
                     .filter(|n| !n.is_empty())
+                    .or_else(|| tab.title.clone())
             })
             .unwrap_or_else(|| "Untitled".to_string());
 

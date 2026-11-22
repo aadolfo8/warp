@@ -125,6 +125,7 @@ pub mod active_file;
 pub mod opened_files;
 pub use icon::{icon_from_file_path, material_icon};
 
+pub mod source_control;
 #[cfg_attr(not(target_family = "wasm"), path = "view.rs")]
 #[cfg_attr(target_family = "wasm", path = "wasm.rs")]
 pub mod view;
