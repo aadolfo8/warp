@@ -785,8 +785,7 @@ impl TerminalView {
             ToastStack::handle(ctx).update(ctx, |toast_stack, ctx| {
                 toast_stack.add_ephemeral_toast(
                     DismissibleToast::error(
-                        "O Claude está ocupado. Use o Claude Remote quando ele terminar."
-                            .to_string(),
+                        "Claude is busy. Use Claude Remote when it finishes.".to_string(),
                     ),
                     window_id,
                     ctx,

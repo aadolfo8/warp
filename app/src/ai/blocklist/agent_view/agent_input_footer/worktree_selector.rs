@@ -26,10 +26,10 @@ use crate::worktrees::{
 };
 
 const BUTTON_LABEL: &str = "Worktree";
-const SEARCH_PLACEHOLDER: &str = "Buscar branch...";
-const CREATE_PLACEHOLDER: &str = "Nome da nova branch (Enter para criar)";
-const LOADING_TEXT: &str = "Carregando branches...";
-const TOOLTIP: &str = "Criar ou buscar branch no worktree";
+const SEARCH_PLACEHOLDER: &str = "Search branches...";
+const CREATE_PLACEHOLDER: &str = "New branch name (Enter to create)";
+const LOADING_TEXT: &str = "Loading branches...";
+const TOOLTIP: &str = "Create or find a branch in the worktree";
 
 /// Returns the directory the worktree workspace is resolved from.
 pub type CwdSource = Arc<dyn Fn(&AppContext) -> Option<PathBuf>>;
@@ -106,8 +106,8 @@ impl GenericMenuItem for OptionMenuItem {
 
     fn name(&self) -> String {
         match self {
-            Self::CreateBranch => "Criar branch".to_owned(),
-            Self::SearchBranch => "Buscar branch".to_owned(),
+            Self::CreateBranch => "Create branch".to_owned(),
+            Self::SearchBranch => "Search branches".to_owned(),
         }
     }
 
@@ -371,7 +371,7 @@ impl WorktreeSelector {
         self.show_search_status(LOADING_TEXT, ctx);
 
         let Some(cwd) = self.cwd.clone() else {
-            self.show_search_status("Não consegui identificar a pasta atual do terminal", ctx);
+            self.show_search_status("Couldn't tell the terminal's current folder", ctx);
             return;
         };
 
@@ -390,7 +390,7 @@ impl WorktreeSelector {
                         let items = branch_menu_items(&workspace, branches);
                         me.workspace = Some(workspace);
                         if items.is_empty() {
-                            me.show_search_status("Nenhuma branch para abrir", ctx);
+                            me.show_search_status("No branch to open", ctx);
                         } else {
                             me.search_menu.update(ctx, |menu, ctx| {
                                 menu.update_menu_items(items, ctx);
@@ -414,7 +414,7 @@ impl WorktreeSelector {
         let Some(workspace) = self.workspace.clone() else {
             return;
         };
-        let label = format!("Trocando para {}...", branch.name);
+        let label = format!("Switching to {}...", branch.name);
         self.run(label, switch_branch(workspace, branch), ctx);
     }
 
@@ -425,13 +425,13 @@ impl WorktreeSelector {
         let Some(cwd) = self.cwd.clone() else {
             show_toast(
                 DismissibleToast::error(
-                    "Worktree: não consegui identificar a pasta atual do terminal".to_owned(),
+                    "Worktree: couldn't tell the terminal's current folder".to_owned(),
                 ),
                 ctx,
             );
             return;
         };
-        let label = format!("Criando {name}...");
+        let label = format!("Creating {name}...");
         let work = async move {
             let workspace = match workspace {
                 Some(workspace) => workspace,
@@ -513,7 +513,7 @@ fn branch_menu_items(
         .into_iter()
         .map(|branch| {
             let partial_note = (repo_count > 1 && branch.repos.len() < repo_count)
-                .then(|| format!("só {}", branch.repos.join(", ")));
+                .then(|| format!("only {}", branch.repos.join(", ")));
             BranchMenuItem {
                 branch,
                 partial_note,

@@ -887,9 +887,10 @@ pub enum WorkspaceAction {
     },
     /// A dragged Claude thread was dropped: over a pane of the active tab it
     /// moves there as a split. A thread already open in a tab moves its pane;
-    /// otherwise a new split runs `command`, which resumes it.
+    /// otherwise a new split in `directory` runs `command`, which resumes it.
     DropClaudeThread {
         session_id: String,
+        directory: PathBuf,
         command: Option<String>,
     },
     /// Open a file in the code editor, split to the right of the active pane

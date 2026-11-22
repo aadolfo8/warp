@@ -272,10 +272,38 @@ fn move_to_trash(path: &Path) -> Result<(), String> {
     })
 }
 
-#[cfg(not(target_os = "macos"))]
+#[cfg(target_os = "windows")]
+fn move_to_trash(path: &Path) -> Result<(), String> {
+    use std::os::windows::ffi::OsStrExt;
+    use windows::Win32::UI::Shell::{
+        FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, SHFILEOPSTRUCTW,
+        SHFileOperationW,
+    };
+    use windows::core::PCWSTR;
+
+    // `pFrom` is a list of paths, so it ends with two NULs.
+    let mut from: Vec<u16> = path.as_os_str().encode_wide().collect();
+    from.extend([0, 0]);
+    let mut operation = SHFILEOPSTRUCTW {
+        wFunc: FO_DELETE,
+        pFrom: PCWSTR(from.as_ptr()),
+        fFlags: (FOF_ALLOWUNDO | FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT).0 as u16,
+        ..Default::default()
+    };
+    let result = unsafe { SHFileOperationW(&mut operation) };
+    if result != 0 || operation.fAnyOperationsAborted.as_bool() {
+        return Err(format!(
+            "couldn't move {} to the Recycle Bin (error {result:#x})",
+            path.display()
+        ));
+    }
+    Ok(())
+}
+
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 fn move_to_trash(path: &Path) -> Result<(), String> {
     Err(format!(
-        "mover para a lixeira não é suportado aqui: {}",
+        "moving to the trash isn't supported here: {}",
         path.display()
     ))
 }
@@ -425,10 +453,10 @@ pub fn format_age(updated_at: SystemTime, now: SystemTime) -> String {
         .map(|age| age.as_secs())
         .unwrap_or(0);
     match seconds {
-        s if s < MINUTE => "agora".to_owned(),
+        s if s < MINUTE => "now".to_owned(),
         s if s < HOUR => format!("{} min", s / MINUTE),
         s if s < DAY => format!("{} h", s / HOUR),
-        s if s < 2 * DAY => "ontem".to_owned(),
+        s if s < 2 * DAY => "yesterday".to_owned(),
         s if s < 7 * DAY => format!("{} d", s / DAY),
         _ => chrono::DateTime::<chrono::Local>::from(updated_at)
             .format("%d/%m")

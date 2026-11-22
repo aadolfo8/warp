@@ -31,7 +31,7 @@ const PREFS_FILE_NAME: &str = "project_manager.toml";
 const VSCODE_PROJECTS_FILE: &str =
     "Code/User/globalStorage/alefragnani.project-manager/projects.json";
 /// Group of the projects without tags in the tags view.
-pub const NO_TAG_LABEL: &str = "Sem tag";
+pub const NO_TAG_LABEL: &str = "No tag";
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -112,7 +112,7 @@ pub fn load_projects() -> Result<Vec<Project>, String> {
     let Ok(contents) = std::fs::read_to_string(&path) else {
         return Ok(Vec::new());
     };
-    parse_projects(&contents).map_err(|err| format!("erro em {}: {err}", path.display()))
+    parse_projects(&contents).map_err(|err| format!("error in {}: {err}", path.display()))
 }
 
 pub fn parse_projects(contents: &str) -> serde_json::Result<Vec<Project>> {
@@ -167,9 +167,9 @@ impl SortOrder {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Saved => "Ordem: como salvos",
-            Self::Name => "Ordem: nome",
-            Self::Path => "Ordem: caminho",
+            Self::Saved => "Sort: as saved",
+            Self::Name => "Sort: name",
+            Self::Path => "Sort: path",
         }
     }
 }
@@ -225,7 +225,7 @@ pub fn matches_query(project: &Project, query: &str) -> bool {
         || project.root_path.to_lowercase().contains(&query)
 }
 
-/// Whether the project passes the tag filter (any selected tag, or "Sem tag"
+/// Whether the project passes the tag filter (any selected tag, or "No tag"
 /// for projects without tags). An empty filter lets everything through.
 pub fn matches_tag_filter(project: &Project, filter: &[String]) -> bool {
     filter.is_empty()
@@ -260,7 +260,7 @@ pub fn visible_projects(
     indices
 }
 
-/// The visible projects grouped by tag, tags sorted by name and "Sem tag"
+/// The visible projects grouped by tag, tags sorted by name and "No tag"
 /// last. A project with several tags shows up in each of them.
 pub fn group_by_tag(projects: &[Project], visible: &[usize]) -> Vec<(String, Vec<usize>)> {
     let mut groups: Vec<(String, Vec<usize>)> = all_tags(projects)

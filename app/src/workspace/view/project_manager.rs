@@ -111,7 +111,7 @@ impl ProjectManagerView {
     pub fn new(ctx: &mut ViewContext<Self>) -> Self {
         let search_editor = single_line_editor(ctx);
         search_editor.update(ctx, |editor, ctx| {
-            editor.set_placeholder_text("Buscar projetos...", ctx);
+            editor.set_placeholder_text("Search projects...", ctx);
         });
         ctx.subscribe_to_view(&search_editor, |me, editor, event, ctx| {
             if let EditorEvent::Edited(_) = event {
@@ -264,8 +264,8 @@ impl ProjectManagerView {
             EditField::Tags => project.tags.join(", "),
         };
         let placeholder = match field {
-            EditField::Name => "Nome do projeto",
-            EditField::Tags => "Tags separadas por vírgula",
+            EditField::Name => "Project name",
+            EditField::Tags => "Comma-separated tags",
         };
         self.editing = Some(ProjectEdit { index, field });
         self.edit_editor.update(ctx, move |editor, ctx| {
@@ -475,14 +475,13 @@ impl View for ProjectManagerView {
             list.add_child(render_note(error.clone(), palette, appearance));
         } else if self.projects.is_empty() {
             list.add_child(render_note(
-                "Salve a pasta da aba atual ou adicione uma com o + para montar sua lista."
-                    .to_owned(),
+                "Save the current tab's folder or add one with + to build your list.".to_owned(),
                 palette,
                 appearance,
             ));
         } else if visible.is_empty() {
             list.add_child(render_note(
-                "Nenhum projeto encontrado".to_owned(),
+                "No projects found".to_owned(),
                 palette,
                 appearance,
             ));
@@ -573,9 +572,9 @@ impl ProjectManagerView {
         .finish();
 
         let (view_icon, view_tooltip) = if self.prefs.view_as_list {
-            (WarpIcon::Dataflow, "Agrupar por tags")
+            (WarpIcon::Dataflow, "Group by tag")
         } else {
-            (WarpIcon::ListCollapsed, "Ver como lista")
+            (WarpIcon::ListCollapsed, "View as list")
         };
         let filter_icon = if self.tag_filter.is_empty() {
             WarpIcon::FilterFunnel
@@ -585,17 +584,17 @@ impl ProjectManagerView {
         let buttons = [
             (
                 WarpIcon::Save,
-                "Salvar a pasta da aba atual",
+                "Save the current tab's folder",
                 ProjectManagerAction::SaveActiveDirectory,
             ),
             (
                 WarpIcon::Plus,
-                "Adicionar pasta",
+                "Add folder",
                 ProjectManagerAction::AddFolder,
             ),
             (
                 WarpIcon::Edit,
-                "Editar projects.json",
+                "Edit projects.json",
                 ProjectManagerAction::EditProjectsFile,
             ),
             (
@@ -610,7 +609,7 @@ impl ProjectManagerView {
             ),
             (
                 filter_icon,
-                "Filtrar por tag",
+                "Filter by tag",
                 ProjectManagerAction::ToggleTagFilterBar,
             ),
         ];
@@ -670,7 +669,7 @@ impl ProjectManagerView {
         .finish()
     }
 
-    /// Chips with every tag (plus "Sem tag"); selected chips filter the list.
+    /// Chips with every tag (plus "No tag"); selected chips filter the list.
     fn render_tag_filter(&self, palette: Palette, appearance: &Appearance) -> Box<dyn Element> {
         let font_family = appearance.ui_font_family();
         let mut tags = project_manager::all_tags(&self.projects);
@@ -807,7 +806,7 @@ impl ProjectManagerView {
                 Some(render_text_input(&self.edit_editor))
             }
             _ if !exists => Some(
-                Text::new_inline("pasta não encontrada", font_family, META_FONT_SIZE)
+                Text::new_inline("folder not found", font_family, META_FONT_SIZE)
                     .with_color(palette.sub_text.into())
                     .finish(),
             ),
@@ -817,27 +816,27 @@ impl ProjectManagerView {
         let actions = [
             (
                 WarpIcon::ClaudeLogo,
-                "Abrir Claude Code aqui",
+                "Open Claude Code here",
                 ProjectManagerAction::OpenClaude(index),
             ),
             (
                 WarpIcon::Tag,
-                "Editar tags",
+                "Edit tags",
                 ProjectManagerAction::StartEditTags(index),
             ),
             (
                 WarpIcon::Pencil,
-                "Renomear",
+                "Rename",
                 ProjectManagerAction::StartRename(index),
             ),
             (
                 WarpIcon::LinkExternal,
-                "Abrir em nova janela",
+                "Open in new window",
                 ProjectManagerAction::OpenInNewWindow(index),
             ),
             (
                 WarpIcon::X,
-                "Remover da lista",
+                "Remove from list",
                 ProjectManagerAction::RemoveProject(index),
             ),
         ];

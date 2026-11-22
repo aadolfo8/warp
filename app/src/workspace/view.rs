@@ -21191,7 +21191,7 @@ impl Workspace {
                     icons::Icon::ClaudeLogo,
                     &self.mouse_states.claude_button,
                     WorkspaceAction::OpenClaudeSession,
-                    "Abrir Claude Code".to_string(),
+                    "Open Claude Code".to_string(),
                     keybinding_name_to_display_string(OPEN_CLAUDE_SESSION_BINDING_NAME, ctx),
                     false,
                     false,
@@ -25142,8 +25142,9 @@ impl TypedActionView for Workspace {
             }
             DropClaudeThread {
                 session_id,
+                directory,
                 command,
-            } => self.drop_thread(session_id, command.as_deref(), ctx),
+            } => self.drop_thread(session_id, directory, command.as_deref(), ctx),
             OpenFileInSplitPane { path } => {
                 self.open_file_with_target(
                     path.clone(),

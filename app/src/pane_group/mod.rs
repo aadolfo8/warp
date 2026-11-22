@@ -3976,14 +3976,25 @@ impl PaneGroup {
     }
 
     /// Splits `base_pane_id` with a new terminal pane on its `direction` side
-    /// (e.g. to open a Claude thread dropped from the Threads panel there).
+    /// whose shell starts in `directory` (e.g. to open a Claude thread dropped
+    /// from the Threads panel there).
     pub(crate) fn split_terminal_pane_from(
         &mut self,
         base_pane_id: PaneId,
         direction: Direction,
+        directory: PathBuf,
         ctx: &mut ViewContext<Self>,
     ) -> Option<ViewHandle<TerminalView>> {
-        let new_pane_id = self.insert_terminal_pane(direction, base_pane_id, None, ctx);
+        let new_pane_id = self.add_session_in_directory(
+            direction,
+            Some(base_pane_id),
+            None, /* chosen_shell */
+            Some(directory),
+            None, /* conversation_restoration */
+            DefaultSessionModeBehavior::Ignore,
+            ctx,
+        );
+        ctx.emit(Event::AppStateChanged);
         self.terminal_view_from_pane_id(new_pane_id, ctx)
     }
 

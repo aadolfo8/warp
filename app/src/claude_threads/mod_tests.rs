@@ -124,10 +124,10 @@ fn resume_command_rejects_unsafe_session_ids() {
 fn format_age_uses_short_relative_labels() {
     let now = SystemTime::UNIX_EPOCH + Duration::from_secs(30 * 24 * 3600);
     let ago = |seconds: u64| format_age(now - Duration::from_secs(seconds), now);
-    assert_eq!(ago(10), "agora");
+    assert_eq!(ago(10), "now");
     assert_eq!(ago(5 * 60), "5 min");
     assert_eq!(ago(3 * 3600), "3 h");
-    assert_eq!(ago(30 * 3600), "ontem");
+    assert_eq!(ago(30 * 3600), "yesterday");
     assert_eq!(ago(3 * 24 * 3600), "3 d");
 }
 

@@ -92,7 +92,7 @@ pub async fn resolve_workspace(cwd: PathBuf) -> Result<WorktreeWorkspace, String
         return Ok(workspace);
     }
     Err(format!(
-        "{} não é um repositório git nem um workspace de ~/{CONFIG_DIR}/{CONFIG_FILE_NAME}",
+        "{} is neither a git repository nor a workspace in ~/{CONFIG_DIR}/{CONFIG_FILE_NAME}",
         cwd.display()
     ))
 }
@@ -193,7 +193,7 @@ pub async fn switch_branch(
     let mut message = format!("{}: worktree na branch {}", workspace.name, branch.name);
     if !missing.is_empty() {
         message.push_str(&format!(
-            " ({} não tem essa branch e ficou como estava)",
+            " ({} doesn't have that branch and was left as is)",
             missing.join(", ")
         ));
     }
@@ -212,14 +212,14 @@ pub async fn create_branch(
 ) -> Result<WorktreeOutcome, String> {
     let name = name.trim().to_owned();
     if name.is_empty() {
-        return Err("digite o nome da nova branch na busca".to_owned());
+        return Err("type the new branch name in the search".to_owned());
     }
     let Some(first) = workspace.repos.first() else {
-        return Err("o workspace não tem repositórios".to_owned());
+        return Err("the workspace has no repositories".to_owned());
     };
     git(&first.main, &["check-ref-format", "--branch", &name])
         .await
-        .map_err(|_| format!("nome de branch inválido: {name}"))?;
+        .map_err(|_| format!("invalid branch name: {name}"))?;
 
     ensure_slots(&workspace).await?;
     ensure_clean(&workspace.repos.iter().collect::<Vec<_>>()).await?;
@@ -236,14 +236,14 @@ pub async fn create_branch(
                 .map_err(|err| format!("{}: {err}", repo.name))?;
         if exists_on_remote || ref_exists(&repo.main, &format!("refs/heads/{name}")).await {
             return Err(format!(
-                "a branch {name} já existe em {}; busque por ela para abrir",
+                "branch {name} already exists in {}; search for it to open it",
                 repo.name
             ));
         }
 
         let Some(base) = base_branch(&workspace, repo).await else {
             return Err(format!(
-                "{}: não achei a branch base (configure `base` em ~/{CONFIG_DIR}/{CONFIG_FILE_NAME})",
+                "{}: couldn't find the base branch (set `base` in ~/{CONFIG_DIR}/{CONFIG_FILE_NAME})",
                 repo.name
             ));
         };
@@ -325,7 +325,7 @@ fn workspace_from_config(cwd: &Path) -> Result<Option<WorktreeWorkspace>, String
         return Ok(None);
     };
     let config: ConfigFile = toml::from_str(&contents)
-        .map_err(|err| format!("erro em {}: {}", path.display(), err.message()))?;
+        .map_err(|err| format!("error in {}: {}", path.display(), err.message()))?;
 
     for entry in config.workspace {
         let root = expand_home(&entry.root);
@@ -467,7 +467,7 @@ async fn ensure_clean(repos: &[&RepoSlot]) -> Result<(), String> {
             .map_err(|err| format!("{}: {err}", repo.name))?;
         if !status.trim().is_empty() {
             return Err(format!(
-                "{}: há alterações sem commit no worktree. Faça commit ou stash antes.",
+                "{}: the worktree has uncommitted changes. Commit or stash them first.",
                 repo.name
             ));
         }
@@ -538,7 +538,7 @@ fn summarize_git_error(output: &str) -> String {
         .position(|line| is_error(line))
         .or_else(|| lines.iter().position(|line| !line.is_empty()))
     else {
-        return "erro desconhecido do git".to_owned();
+        return "unknown git error".to_owned();
     };
 
     let mut message = lines[start].to_owned();

@@ -91,7 +91,7 @@ pub struct ClaudeThreadsView {
     projects: Vec<ThreadProject>,
     threads: ProjectThreads,
     /// False until the first scan finishes, so empty projects don't flash
-    /// "Nenhuma conversa" while loading.
+    /// "No conversations yet" while loading.
     has_scanned: bool,
     /// Parsed transcripts, reused by the next scan when unchanged.
     transcript_cache: Arc<Mutex<TranscriptCache>>,
@@ -100,7 +100,7 @@ pub struct ClaudeThreadsView {
     is_visible: bool,
     /// Projects showing every thread instead of the latest `RECENT_THREAD_LIMIT`.
     show_all_threads: HashSet<PathBuf>,
-    /// The thread whose row is asking "Apagar?".
+    /// The thread whose row is asking "Delete?".
     pending_delete: Option<String>,
     scroll_state: ClippedScrollStateHandle,
     /// Hover state of each row and button, keyed by what it belongs to.
@@ -315,10 +315,6 @@ fn project_block_position_id(path: &Path) -> String {
 }
 
 /// Quotes `path` for a POSIX shell.
-fn shell_quote(path: &Path) -> String {
-    format!("'{}'", path.display().to_string().replace('\'', "'\\''"))
-}
-
 /// Claude sessions opened from a project share a tab group named after its
 /// folder.
 fn project_group_name(project: &Path) -> String {
@@ -470,7 +466,7 @@ impl ClaudeThreadsView {
             .finish();
         let add_button = render_icon_button(
             WarpIcon::Plus,
-            "Adicionar pasta",
+            "Add folder",
             self.mouse_state("header:add".to_owned()),
             ClaudeThreadsAction::AddProject,
             palette,
@@ -509,7 +505,7 @@ impl ClaudeThreadsView {
         };
         let new_thread_button = render_icon_button(
             WarpIcon::Plus,
-            "Nova thread",
+            "New thread",
             self.mouse_state(format!("project-new:{key}")),
             ClaudeThreadsAction::NewThread(path.clone()),
             palette,
@@ -517,7 +513,7 @@ impl ClaudeThreadsView {
         );
         let remove_button = render_icon_button(
             WarpIcon::X,
-            "Remover pasta da lista",
+            "Remove folder from list",
             self.mouse_state(format!("project-remove:{key}")),
             ClaudeThreadsAction::RemoveProject(path.clone()),
             palette,
@@ -602,7 +598,7 @@ impl ClaudeThreadsView {
 
         if threads.is_empty() {
             if self.has_scanned {
-                list.add_child(render_note("Nenhuma conversa ainda", palette, appearance));
+                list.add_child(render_note("No conversations yet", palette, appearance));
             }
             return;
         }
@@ -619,9 +615,9 @@ impl ClaudeThreadsView {
 
         if threads.len() > RECENT_THREAD_LIMIT {
             let label = if show_all {
-                "Mostrar menos".to_owned()
+                "Show less".to_owned()
             } else {
-                format!("Mostrar mais ({})", threads.len() - RECENT_THREAD_LIMIT)
+                format!("Show more ({})", threads.len() - RECENT_THREAD_LIMIT)
             };
             let path = project.path.clone();
             let mouse_state = self.mouse_state(format!("show-all:{}", path.display()));
@@ -689,7 +685,7 @@ impl ClaudeThreadsView {
         let trash_button = can_delete.then(|| {
             render_icon_button(
                 WarpIcon::Trash,
-                "Apagar conversa",
+                "Delete conversation",
                 self.mouse_state(format!("thread-delete:{session_id}")),
                 ClaudeThreadsAction::AskDeleteThread(session_id.clone()),
                 palette,
@@ -700,7 +696,7 @@ impl ClaudeThreadsView {
             [
                 render_icon_button(
                     WarpIcon::Check,
-                    "Mover para a Lixeira",
+                    "Move to Trash",
                     self.mouse_state(format!("thread-confirm:{session_id}")),
                     ClaudeThreadsAction::ConfirmDeleteThread(session_id.clone()),
                     palette,
@@ -708,7 +704,7 @@ impl ClaudeThreadsView {
                 ),
                 render_icon_button(
                     WarpIcon::X,
-                    "Cancelar",
+                    "Cancel",
                     self.mouse_state(format!("thread-cancel:{session_id}")),
                     ClaudeThreadsAction::CancelDeleteThread,
                     palette,
@@ -718,9 +714,8 @@ impl ClaudeThreadsView {
         });
         // Dropped on a pane, a thread already open moves its pane there; any
         // other resumes in a new split from its folder.
-        let drop_command = thread
-            .resume_command()
-            .map(|resume| format!("cd {} && {resume}", shell_quote(&thread.cwd)));
+        let drop_command = thread.resume_command();
+        let drop_directory = thread.cwd.clone();
         let is_running = running_session.is_some();
 
         let row = Hoverable::new(
@@ -732,7 +727,7 @@ impl ClaudeThreadsView {
                     .with_spacing(4.);
                 if let Some(buttons) = confirm_buttons {
                     meta.add_child(
-                        Text::new_inline("Apagar?", font_family, META_FONT_SIZE)
+                        Text::new_inline("Delete?", font_family, META_FONT_SIZE)
                             .with_color(palette.main_text.into())
                             .finish(),
                     );
@@ -755,7 +750,7 @@ impl ClaudeThreadsView {
                             .finish(),
                     );
                 }
-                // The "Apagar?" prompt may be wider; everything else keeps the
+                // The "Delete?" prompt may be wider; everything else keeps the
                 // same box so hovering doesn't shift the row.
                 let meta = if is_confirming {
                     ConstrainedBox::new(meta.finish())
@@ -819,6 +814,7 @@ impl ClaudeThreadsView {
             .on_drop(move |ctx, _, _, _| {
                 ctx.dispatch_typed_action(WorkspaceAction::DropClaudeThread {
                     session_id: drop_session_id.clone(),
+                    directory: drop_directory.clone(),
                     command: drop_command.clone(),
                 });
             })
@@ -828,7 +824,7 @@ impl ClaudeThreadsView {
 
 fn render_empty_state(palette: Palette, appearance: &Appearance) -> Box<dyn Element> {
     let hint = Text::new(
-        "Adicione uma pasta com o + para ver as conversas do Claude Code feitas nela.",
+        "Add a folder with + to see the Claude Code conversations started in it.",
         appearance.ui_font_family(),
         TITLE_FONT_SIZE,
     )

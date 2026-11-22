@@ -134,7 +134,7 @@ const FAST_FORWARD_LOCKED_TOOLTIP: &str =
 
 const START_REMOTE_CONTROL_TOOLTIP: &str = "Start remote control";
 const CLAUDE_REMOTE_TOOLTIP: &str =
-    "Controlar esta sessão pelo celular ou claude.ai/code (/remote-control do Claude Code)";
+    "Control this session from your phone or claude.ai/code (Claude Code's /remote-control)";
 const START_REMOTE_CONTROL_LOGIN_REQUIRED_TOOLTIP: &str = "Log in to use /remote-control";
 
 const LIVE_REMOTE_VM_INDICATOR_TOOLTIP: &str = "Connected to a live cloud agent session. Your next prompt continues on the running remote machine.";

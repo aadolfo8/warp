@@ -67,7 +67,7 @@ fn summarize_git_error_falls_back_to_first_line() {
         summarize_git_error("\nsomething went wrong\n, "),
         "something went wrong"
     );
-    assert_eq!(summarize_git_error(", "), "erro desconhecido do git");
+    assert_eq!(summarize_git_error(", "), "unknown git error");
 }
 
 #[test]

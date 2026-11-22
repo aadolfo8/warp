@@ -3,6 +3,8 @@
 //! works when dragging a group that holds a single tab, and dropping a Claude
 //! thread from the Threads panel opens it in a new split there.
 
+use std::path::Path;
+
 use pathfinder_color::ColorU;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::{Vector2F, vec2f};
@@ -140,6 +142,7 @@ impl Workspace {
     pub(super) fn drop_thread(
         &mut self,
         session_id: &str,
+        directory: &Path,
         command: Option<&str>,
         ctx: &mut ViewContext<Self>,
     ) {
@@ -153,7 +156,12 @@ impl Workspace {
             self.move_terminal_pane_to(terminal_view_id, target, ctx);
         } else if let Some(command) = command {
             let terminal = self.active_tab_pane_group().update(ctx, |group, ctx| {
-                group.split_terminal_pane_from(target.pane_id, target.direction, ctx)
+                group.split_terminal_pane_from(
+                    target.pane_id,
+                    target.direction,
+                    directory.to_path_buf(),
+                    ctx,
+                )
             });
             if let Some(terminal) = terminal {
                 terminal.update(ctx, |terminal, ctx| {
