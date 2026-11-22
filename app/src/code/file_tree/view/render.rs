@@ -3,7 +3,7 @@ use warpui::elements::{DraggableState, MouseStateHandle};
 use super::FileTreeItem;
 use crate::appearance::Appearance;
 use crate::code::file_tree::git_status::GitFileStatus;
-use crate::code::icon_from_file_path;
+use crate::code::{icon_from_file_path, material_icon, material_icons};
 use crate::ui_components::icons::Icon;
 use crate::ui_components::item_highlight::ImageOrIcon;
 
@@ -51,9 +51,14 @@ impl FileTreeItem {
                     .file_name()
                     .map(ToOwned::to_owned)
                     .unwrap_or_else(|| String::from("Folder"));
+                let folder_icon = material_icons::folder_icon(
+                    directory.path.as_str(),
+                    is_expanded.unwrap_or(false),
+                    *depth == 0,
+                );
                 RenderState {
                     display_name,
-                    icon: ImageOrIcon::Icon(Icon::Folder),
+                    icon: ImageOrIcon::Image(material_icon(folder_icon)),
                     is_expanded,
                     depth: *depth,
                     mouse_state: mouse_state_handle.clone(),

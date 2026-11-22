@@ -119,10 +119,11 @@ pub enum SaveOutcome {
 pub mod file_tree;
 pub mod footer;
 mod icon;
+pub mod material_icons;
 
 pub mod active_file;
 pub mod opened_files;
-pub use icon::icon_from_file_path;
+pub use icon::{icon_from_file_path, material_icon};
 
 #[cfg_attr(not(target_family = "wasm"), path = "view.rs")]
 #[cfg_attr(target_family = "wasm", path = "wasm.rs")]
