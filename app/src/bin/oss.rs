@@ -1,6 +1,12 @@
 // On Windows, we don't want to display a console window when the application is running in release
 // builds. See https://doc.rust-lang.org/reference/runtime.html#the-windows_subsystem-attribute.
-#![cfg_attr(feature = "release_bundle", windows_subsystem = "windows")]
+// OSS builds are usually compiled with a plain `cargo build --release` rather than the bundle
+// script, so optimized builds hide the console even without `release_bundle`; logs still go to
+// warp-oss.log.
+#![cfg_attr(
+    any(feature = "release_bundle", not(debug_assertions)),
+    windows_subsystem = "windows"
+)]
 
 use anyhow::Result;
 use warp_core::AppId;
