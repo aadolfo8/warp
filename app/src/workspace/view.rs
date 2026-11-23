@@ -1,4 +1,5 @@
 pub(crate) mod agent_cli_launch_modal;
+mod agents_panel;
 pub(crate) mod auto_handoff_sleep_modal;
 mod build_plan_migration_modal;
 pub(crate) mod chatgpt_plan_modal;
@@ -18,6 +19,7 @@ pub(crate) mod openwarp_launch_modal;
 pub(crate) mod orchestration_launch_modal;
 mod project_manager;
 pub(crate) mod right_panel;
+mod sidebar_rows;
 mod startup_directory;
 mod tab_grouping;
 mod tab_merge;
@@ -707,6 +709,7 @@ pub(crate) const TOGGLE_TAB_CONFIGS_MENU_BINDING_NAME: &str = "workspace:toggle_
 pub(crate) const TOGGLE_CLAUDE_THREADS_BINDING_NAME: &str = "workspace:toggle_claude_threads";
 pub(crate) const TOGGLE_PROJECT_MANAGER_BINDING_NAME: &str = "workspace:toggle_project_manager";
 pub(crate) const OPEN_CLAUDE_SESSION_BINDING_NAME: &str = "workspace:open_claude_session";
+pub(crate) const TOGGLE_AGENTS_PANEL_BINDING_NAME: &str = "workspace:toggle_agents_panel";
 
 // Editable left panel toolbelt keybindings.
 pub(crate) const LEFT_PANEL_PROJECT_EXPLORER_BINDING_NAME: &str =
@@ -4466,6 +4469,7 @@ impl Workspace {
                 },
                 LeftPanelDisplayedTab::WarpDrive => ToolPanelView::WarpDrive,
                 LeftPanelDisplayedTab::ConversationListView => ToolPanelView::ConversationListView,
+                LeftPanelDisplayedTab::Agents => ToolPanelView::Agents,
             };
             lp.restore_active_view_from_snapshot(active_view, ctx);
             lp.set_active_pane_group(pane_group.clone(), &self.working_directories_model, ctx);
@@ -21146,6 +21150,7 @@ impl Workspace {
                         ToolPanelView::GlobalSearch { .. } => "Global search",
                         ToolPanelView::WarpDrive => "Warp Drive",
                         ToolPanelView::ConversationListView => "Agent conversations",
+                        ToolPanelView::Agents => "Agents",
                     }
                 } else {
                     "Tools panel"
@@ -21310,6 +21315,7 @@ impl Workspace {
                 ToolPanelView::GlobalSearch { .. } => "Global search",
                 ToolPanelView::WarpDrive => "Warp Drive",
                 ToolPanelView::ConversationListView => "Agent conversations",
+                ToolPanelView::Agents => "Agents",
             }
         } else {
             "Tools panel"
@@ -24521,6 +24527,7 @@ impl Workspace {
         }
         if cfg!(feature = "local_fs") {
             views.push(ToolPanelView::SourceControl);
+            views.push(ToolPanelView::Agents);
         }
         if FeatureFlag::AgentViewConversationListView.is_enabled()
             && *AISettings::as_ref(ctx).show_conversation_history
@@ -27009,6 +27016,13 @@ impl TypedActionView for Workspace {
             OpenConversationListView => {
                 if FeatureFlag::AgentViewConversationListView.is_enabled() {
                     self.open_left_panel_view(&LeftPanelAction::ConversationListView, ctx);
+                }
+            }
+            ToggleAgentsPanel => {
+                if cfg!(feature = "local_fs") {
+                    let is_showing =
+                        self.left_panel_view.as_ref(ctx).active_view() == ToolPanelView::Agents;
+                    self.toggle_left_panel_view(&LeftPanelAction::Agents, is_showing, ctx);
                 }
             }
             ShowRewindConfirmationDialog {

@@ -197,7 +197,7 @@ impl GenericMenuItem for CreateBranchMenuItem {
     }
 
     fn name(&self) -> String {
-        format!("Criar branch \"{}\"", self.name)
+        format!("Create branch \"{}\"", self.name)
     }
 
     fn icon(&self, _app: &AppContext) -> Option<Icon> {

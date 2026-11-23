@@ -7,6 +7,7 @@ use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
 use event::{CLIAgentEvent, CLIAgentEventSource, CLIAgentEventType};
+use instant::Instant;
 use warp_core::execution_mode::AppExecutionMode;
 use warpui::r#async::SpawnedFutureHandle;
 use warpui::{Entity, EntityId, ModelContext, ModelHandle, SingletonEntity};
@@ -76,6 +77,8 @@ pub struct CLIAgentSessionContext {
     pub summary: Option<String>,
     pub query: Option<String>,
     pub response: Option<String>,
+    /// Path of the agent's on-disk conversation transcript, when the plugin reports it.
+    pub transcript_path: Option<String>,
 }
 
 /// State of the rich input editor for composing a prompt to send to a CLI agent.
@@ -239,6 +242,11 @@ impl CLIAgentSession {
             .session_id
             .clone()
             .or(self.session_context.session_id.take());
+        self.session_context.transcript_path = event
+            .payload
+            .transcript_path
+            .clone()
+            .or(self.session_context.transcript_path.take());
 
         let new_status = match &event.event {
             CLIAgentEventType::PromptSubmit => {
@@ -411,6 +419,8 @@ pub struct CLIAgentSessionsModel {
     /// Source of `CtrlCCancelState::armed_token` values. Monotonically increasing;
     /// never reused, so a stale callback can never alias a newer window.
     next_ctrl_c_token: u64,
+    /// When each session last entered its current status.
+    status_changed_at: HashMap<EntityId, Instant>,
 }
 
 impl Entity for CLIAgentSessionsModel {
@@ -426,7 +436,19 @@ impl CLIAgentSessionsModel {
             plugin_auto_failures: HashSet::new(),
             ctrl_c_cancel_state: HashMap::new(),
             next_ctrl_c_token: 0,
+            status_changed_at: HashMap::new(),
         }
+    }
+
+    pub fn sessions(&self) -> impl Iterator<Item = (EntityId, &CLIAgentSession)> {
+        self.sessions
+            .iter()
+            .map(|(terminal_view_id, session)| (*terminal_view_id, session))
+    }
+
+    /// When the session in this terminal entered its current status.
+    pub fn status_changed_at(&self, terminal_view_id: EntityId) -> Option<Instant> {
+        self.status_changed_at.get(&terminal_view_id).copied()
     }
 
     pub fn session(&self, terminal_view_id: EntityId) -> Option<&CLIAgentSession> {
@@ -483,6 +505,8 @@ impl CLIAgentSessionsModel {
         {
             // Upgrade existing session with plugin context.
             session.status = CLIAgentSessionStatus::InProgress;
+            self.status_changed_at
+                .insert(terminal_view_id, Instant::now());
             session.listener = Some(listener);
             session.plugin_version = plugin_version;
             session.remote_host = remote_host;
@@ -521,6 +545,7 @@ impl CLIAgentSessionsModel {
     pub fn remove_session(&mut self, terminal_view_id: EntityId, ctx: &mut ModelContext<Self>) {
         self.abort_pending_cancel(terminal_view_id);
         self.ctrl_c_cancel_state.remove(&terminal_view_id);
+        self.status_changed_at.remove(&terminal_view_id);
         if let Some(session) = self.sessions.remove(&terminal_view_id) {
             ctx.emit(CLIAgentSessionsModelEvent::Ended {
                 terminal_view_id,
@@ -583,6 +608,8 @@ impl CLIAgentSessionsModel {
             session.apply_event(event)
         };
         if let Some(new_status) = new_status {
+            self.status_changed_at
+                .insert(terminal_view_id, Instant::now());
             let agent = session.agent;
             ctx.emit(CLIAgentSessionsModelEvent::StatusChanged {
                 terminal_view_id,
@@ -728,6 +755,8 @@ impl CLIAgentSessionsModel {
         session.status = CLIAgentSessionStatus::Cancelled;
         let agent = session.agent;
         let session_context = Box::new(session.session_context.clone());
+        self.status_changed_at
+            .insert(terminal_view_id, Instant::now());
         ctx.emit(CLIAgentSessionsModelEvent::StatusChanged {
             terminal_view_id,
             agent,
@@ -820,6 +849,8 @@ impl CLIAgentSessionsModel {
         // arm, and any pending window belonged to the session being replaced.
         self.abort_pending_cancel(terminal_view_id);
         self.ctrl_c_cancel_state.remove(&terminal_view_id);
+        self.status_changed_at
+            .insert(terminal_view_id, Instant::now());
         if let Some(old) = self.sessions.insert(terminal_view_id, session) {
             ctx.emit(CLIAgentSessionsModelEvent::Ended {
                 terminal_view_id,

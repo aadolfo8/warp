@@ -12,32 +12,34 @@ use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, PoisonError};
 use std::time::{Duration, SystemTime};
 
-use pathfinder_geometry::vector::vec2f;
 use warp_core::ui::Icon as WarpIcon;
 use warp_core::ui::theme::Fill as WarpThemeFill;
-use warp_core::ui::theme::color::internal_colors;
 use warpui::r#async::Timer;
 use warpui::elements::{
-    ChildAnchor, ClippedScrollStateHandle, ClippedScrollable, ConstrainedBox, Container,
-    CornerRadius, CrossAxisAlignment, DragAxis, Draggable, DraggableState, Element,
-    Fill as ElementFill, Flex, Hoverable, MainAxisAlignment, MainAxisSize, MouseStateHandle,
-    OffsetPositioning, Padding, ParentAnchor, ParentElement, ParentOffsetBounds, Radius,
-    SavePosition, ScrollbarWidth, Shrinkable, Stack, Text,
+    ClippedScrollStateHandle, ClippedScrollable, ConstrainedBox, Container, CrossAxisAlignment,
+    DragAxis, Draggable, DraggableState, Element, Fill as ElementFill, Flex, Hoverable,
+    MainAxisAlignment, MainAxisSize, MouseStateHandle, ParentElement, SavePosition, ScrollbarWidth,
+    Shrinkable, Text,
 };
 use warpui::geometry::rect::RectF;
 use warpui::platform::{Cursor, FilePickerConfiguration};
 use warpui::prelude::Align;
 use warpui::text_layout::ClipConfig;
-use warpui::ui_components::components::UiComponent;
 use warpui::{AppContext, Entity, SingletonEntity, TypedActionView, View, ViewContext};
 
+use crate::agents::state::AgentStatus;
 use crate::appearance::Appearance;
 use crate::claude_threads::{
     self, ClaudeThread, NEW_THREAD_COMMAND, ProjectThreads, ThreadProject, TranscriptCache,
 };
 use crate::terminal::CLIAgent;
-use crate::terminal::cli_agent_sessions::{CLIAgentSessionStatus, CLIAgentSessionsModel};
+use crate::terminal::cli_agent_sessions::CLIAgentSessionsModel;
 use crate::workspace::WorkspaceAction;
+use crate::workspace::view::sidebar_rows::{
+    CHILD_INDENT, ICON_TEXT_GAP, META_FONT_SIZE, META_HEIGHT, PANEL_PADDING, Palette,
+    ROW_HORIZONTAL_PADDING, ROW_SPACING, ROW_VERTICAL_PADDING, TITLE_FONT_SIZE, render_icon,
+    render_icon_button, render_note, render_row_container,
+};
 
 /// How often the transcripts are re-read while the panel is visible, so new
 /// conversations and title changes show up.
@@ -47,22 +49,9 @@ const POLL_INTERVAL: Duration = Duration::from_secs(4);
 const RECENTLY_ACTIVE: Duration = Duration::from_secs(120);
 /// Threads listed per project until "Mostrar mais" is clicked.
 const RECENT_THREAD_LIMIT: usize = 10;
-const PANEL_PADDING: f32 = 8.;
-const ROW_VERTICAL_PADDING: f32 = 5.;
-const ROW_HORIZONTAL_PADDING: f32 = 6.;
-const ROW_CORNER_RADIUS: f32 = 4.;
-const ROW_SPACING: f32 = 2.;
-const THREAD_INDENT: f32 = 18.;
-const ICON_SIZE: f32 = 12.;
-const ACTION_ICON_SIZE: f32 = 14.;
-const ACTION_BUTTON_PADDING: f32 = 2.;
-const ICON_TEXT_GAP: f32 = 8.;
-const TITLE_FONT_SIZE: f32 = 12.;
-const META_FONT_SIZE: f32 = 10.;
 /// Fixed box for a thread's age, status dot or trash button, so swapping them
 /// on hover doesn't move the row.
 const META_WIDTH: f32 = 52.;
-const META_HEIGHT: f32 = ACTION_ICON_SIZE + 2. * ACTION_BUTTON_PADDING;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ClaudeThreadsAction {
@@ -374,34 +363,6 @@ impl TypedActionView for ClaudeThreadsView {
     }
 }
 
-/// Theme colors used by the rows, resolved once per render.
-#[derive(Clone, Copy)]
-struct Palette {
-    main_text: WarpThemeFill,
-    sub_text: WarpThemeFill,
-    row_hover: WarpThemeFill,
-    button_hover: WarpThemeFill,
-    working: WarpThemeFill,
-    claude: WarpThemeFill,
-}
-
-impl Palette {
-    fn new(appearance: &Appearance) -> Self {
-        let theme = appearance.theme();
-        Self {
-            main_text: theme.main_text_color(theme.background()),
-            sub_text: theme.sub_text_color(theme.background()),
-            row_hover: internal_colors::fg_overlay_2(theme),
-            button_hover: internal_colors::fg_overlay_3(theme),
-            working: theme.accent(),
-            claude: CLIAgent::Claude
-                .brand_color()
-                .map(WarpThemeFill::Solid)
-                .unwrap_or_else(|| theme.accent()),
-        }
-    }
-}
-
 impl View for ClaudeThreadsView {
     fn ui_name() -> &'static str {
         "ClaudeThreadsView"
@@ -598,7 +559,12 @@ impl ClaudeThreadsView {
 
         if threads.is_empty() {
             if self.has_scanned {
-                list.add_child(render_note("No conversations yet", palette, appearance));
+                list.add_child(render_note(
+                    "No conversations yet",
+                    CHILD_INDENT,
+                    palette,
+                    appearance,
+                ));
             }
             return;
         }
@@ -628,7 +594,7 @@ impl ClaudeThreadsView {
                         .with_color(palette.sub_text.into())
                         .finish();
                     let text = Container::new(text)
-                        .with_padding_left(THREAD_INDENT)
+                        .with_padding_left(CHILD_INDENT)
                         .finish();
                     render_row_container(text, hover_state.is_hovered(), palette)
                 })
@@ -644,7 +610,7 @@ impl ClaudeThreadsView {
     }
 
     /// Claude icon, title and age of a thread. Threads running in a tab also
-    /// get a status dot: working, waiting for the user, or idle. On hover the
+    /// get a status dot: working, waiting for the user, finished unseen, or idle. On hover the
     /// age gives way to a trash button, which asks for confirmation in the row
     /// before moving the conversation to the Trash.
     fn render_thread_row(
@@ -665,14 +631,11 @@ impl ClaudeThreadsView {
             .is_ok_and(|age| age < RECENTLY_ACTIVE)
             || thread.updated_at > now;
         let can_delete = running_session.is_none() && !recently_active;
-        let status_color = running_session.map(|(_, session)| {
-            if matches!(session.status, CLIAgentSessionStatus::Blocked { .. }) {
-                palette.claude
-            } else if session.is_working_on_prompt() {
-                palette.working
-            } else {
-                palette.sub_text
-            }
+        let status_color = running_session.map(|(terminal_view_id, _)| {
+            AgentStatus::for_terminal(terminal_view_id, app)
+                .and_then(|status| status.color(appearance.theme()))
+                .map(WarpThemeFill::Solid)
+                .unwrap_or(palette.sub_text)
         });
         let title = thread.title.clone();
         let age = claude_threads::format_age(thread.updated_at, now);
@@ -767,7 +730,10 @@ impl ClaudeThreadsView {
                     .with_main_axis_size(MainAxisSize::Max)
                     .with_cross_axis_alignment(CrossAxisAlignment::Center)
                     .with_spacing(ICON_TEXT_GAP)
-                    .with_child(render_icon(WarpIcon::ClaudeLogo, palette.claude))
+                    .with_child(render_icon(
+                        WarpIcon::ClaudeLogo,
+                        palette.agent_color(CLIAgent::Claude),
+                    ))
                     .with_child(
                         Shrinkable::new(
                             1.,
@@ -787,9 +753,7 @@ impl ClaudeThreadsView {
                     .with_child(Shrinkable::new(1., label).finish())
                     .with_child(meta)
                     .finish();
-                let row = Container::new(row)
-                    .with_padding_left(THREAD_INDENT)
-                    .finish();
+                let row = Container::new(row).with_padding_left(CHILD_INDENT).finish();
                 render_row_container(row, hover_state.is_hovered(), palette)
             },
         )
@@ -834,80 +798,4 @@ fn render_empty_state(palette: Palette, appearance: &Appearance) -> Box<dyn Elem
         .with_horizontal_padding(ROW_HORIZONTAL_PADDING)
         .with_vertical_padding(ROW_VERTICAL_PADDING)
         .finish()
-}
-
-fn render_note(text: &'static str, palette: Palette, appearance: &Appearance) -> Box<dyn Element> {
-    Container::new(
-        Text::new_inline(text, appearance.ui_font_family(), META_FONT_SIZE)
-            .with_color(palette.sub_text.into())
-            .finish(),
-    )
-    .with_padding_left(THREAD_INDENT + ROW_HORIZONTAL_PADDING)
-    .with_vertical_padding(ROW_VERTICAL_PADDING)
-    .finish()
-}
-
-fn render_icon(icon: WarpIcon, color: WarpThemeFill) -> Box<dyn Element> {
-    ConstrainedBox::new(icon.to_warpui_icon(color).finish())
-        .with_width(ICON_SIZE)
-        .with_height(ICON_SIZE)
-        .finish()
-}
-
-/// Padding, rounded corners and hover background shared by every row.
-fn render_row_container(
-    child: Box<dyn Element>,
-    is_hovered: bool,
-    palette: Palette,
-) -> Box<dyn Element> {
-    let mut container = Container::new(child)
-        .with_horizontal_padding(ROW_HORIZONTAL_PADDING)
-        .with_vertical_padding(ROW_VERTICAL_PADDING)
-        .with_corner_radius(CornerRadius::with_all(Radius::Pixels(ROW_CORNER_RADIUS)));
-    if is_hovered {
-        container = container.with_background(palette.row_hover);
-    }
-    container.finish()
-}
-
-/// Small icon button with a tooltip below it.
-fn render_icon_button(
-    icon: WarpIcon,
-    tooltip: &'static str,
-    mouse_state: MouseStateHandle,
-    action: ClaudeThreadsAction,
-    palette: Palette,
-    appearance: &Appearance,
-) -> Box<dyn Element> {
-    let ui_builder = appearance.ui_builder().clone();
-    Hoverable::new(mouse_state, move |hover_state| {
-        let icon = ConstrainedBox::new(icon.to_warpui_icon(palette.sub_text).finish())
-            .with_width(ACTION_ICON_SIZE)
-            .with_height(ACTION_ICON_SIZE)
-            .finish();
-        let button = Container::new(icon)
-            .with_padding(Padding::uniform(ACTION_BUTTON_PADDING))
-            .with_corner_radius(CornerRadius::with_all(Radius::Pixels(ROW_CORNER_RADIUS)));
-        if !hover_state.is_hovered() {
-            return button.finish();
-        }
-        let button = button.with_background(palette.button_hover).finish();
-        let tooltip = ui_builder.tool_tip(tooltip.to_owned()).build().finish();
-        let mut stack = Stack::new().with_child(button);
-        stack.add_positioned_overlay_child(
-            tooltip,
-            OffsetPositioning::offset_from_parent(
-                vec2f(0., 4.),
-                ParentOffsetBounds::WindowByPosition,
-                ParentAnchor::BottomMiddle,
-                ChildAnchor::TopMiddle,
-            ),
-        );
-        stack.finish()
-    })
-    .with_cursor(Cursor::PointingHand)
-    .on_click(move |ctx, _, _| {
-        ctx.dispatch_typed_action(action.clone());
-    })
-    .finish()
 }

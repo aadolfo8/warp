@@ -69,11 +69,11 @@ use crate::workspace::view::{
     NEW_AGENT_TAB_BINDING_NAME, NEW_AMBIENT_AGENT_TAB_BINDING_NAME, NEW_FILE_BINDING_NAME,
     NEW_TAB_BINDING_NAME, NEW_TERMINAL_TAB_BINDING_NAME, NEW_WINDOW_BINDING_NAME,
     OPEN_CLAUDE_SESSION_BINDING_NAME, OPEN_GLOBAL_SEARCH_BINDING_NAME,
-    TOGGLE_CLAUDE_THREADS_BINDING_NAME, TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME,
-    TOGGLE_NOTIFICATION_MAILBOX_BINDING_NAME, TOGGLE_PROJECT_EXPLORER_BINDING_NAME,
-    TOGGLE_PROJECT_MANAGER_BINDING_NAME, TOGGLE_RIGHT_PANEL_BINDING_NAME,
-    TOGGLE_TAB_CONFIGS_MENU_BINDING_NAME, TOGGLE_VERTICAL_TABS_PANEL_BINDING_NAME,
-    TOGGLE_WARP_DRIVE_BINDING_NAME,
+    TOGGLE_AGENTS_PANEL_BINDING_NAME, TOGGLE_CLAUDE_THREADS_BINDING_NAME,
+    TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME, TOGGLE_NOTIFICATION_MAILBOX_BINDING_NAME,
+    TOGGLE_PROJECT_EXPLORER_BINDING_NAME, TOGGLE_PROJECT_MANAGER_BINDING_NAME,
+    TOGGLE_RIGHT_PANEL_BINDING_NAME, TOGGLE_TAB_CONFIGS_MENU_BINDING_NAME,
+    TOGGLE_VERTICAL_TABS_PANEL_BINDING_NAME, TOGGLE_WARP_DRIVE_BINDING_NAME,
 };
 
 pub fn init(app: &mut AppContext) {
@@ -817,6 +817,16 @@ pub fn init(app: &mut AppContext) {
         .with_group(bindings::BindingGroup::Navigation.as_str())
         .with_mac_key_binding("ctrl-7")
         .with_linux_or_windows_key_binding("alt-7"),
+        EditableBinding::new(
+            TOGGLE_AGENTS_PANEL_BINDING_NAME,
+            BindingDescription::new("Toggle Agents panel"),
+            WorkspaceAction::ToggleAgentsPanel,
+        )
+        .with_context_predicate(id!("Workspace"))
+        .with_group(bindings::BindingGroup::Navigation.as_str())
+        .with_enabled(|| cfg!(feature = "local_fs"))
+        .with_mac_key_binding("ctrl-8")
+        .with_linux_or_windows_key_binding("alt-8"),
         EditableBinding::new(
             LEFT_PANEL_PROJECT_EXPLORER_BINDING_NAME,
             BindingDescription::new("Left Panel: Project explorer"),

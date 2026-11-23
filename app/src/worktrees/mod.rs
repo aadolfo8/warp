@@ -19,6 +19,8 @@
 //! Without a matching entry, the git repo of the current directory (or a folder
 //! whose children are git repos) is used, with its slot at `<repo>-worktree`.
 
+pub mod per_branch;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -190,7 +192,7 @@ pub async fn switch_branch(
         .filter(|repo| !branch.repos.contains(&repo.name))
         .map(|repo| repo.name.as_str())
         .collect();
-    let mut message = format!("{}: worktree na branch {}", workspace.name, branch.name);
+    let mut message = format!("{}: worktree switched to {}", workspace.name, branch.name);
     if !missing.is_empty() {
         message.push_str(&format!(
             " ({} doesn't have that branch and was left as is)",
@@ -260,7 +262,7 @@ pub async fn create_branch(
     bases.dedup();
     Ok(WorktreeOutcome {
         message: format!(
-            "{}: branch {name} criada a partir da {}",
+            "{}: branch {name} created from {}",
             workspace.name,
             bases.join(", ")
         ),

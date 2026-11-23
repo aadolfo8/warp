@@ -74,10 +74,9 @@ use crate::code::editor::model::{
 };
 use crate::code::editor::nav_bar::{NavBar, NavBarBehavior, NavBarEvent};
 use crate::code::editor::scroll::{ScrollPosition, ScrollTrigger, ScrollWheelBehavior};
-use crate::code::vscode_appearance;
 use crate::code::{
     NoopCommentEditorProvider, NoopFindReferencesCardProvider, ShowCommentEditorProvider,
-    ShowFindReferencesCardProvider,
+    ShowFindReferencesCardProvider, vscode_appearance,
 };
 use crate::code_review::comments::{CommentId, CommentOrigin};
 use crate::editor::InteractionState;

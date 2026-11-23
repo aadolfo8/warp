@@ -706,6 +706,8 @@ pub enum WorkspaceAction {
     OpenGlobalSearch,
     ToggleConversationListView,
     OpenConversationListView,
+    /// Show the Agents tab of the tools panel, or close the panel when it's already showing.
+    ToggleAgentsPanel,
     OpenAgentManagementView,
     /// Open the Build Plan Migration Modal (for debugging)
     #[cfg(debug_assertions)]
@@ -1241,6 +1243,7 @@ impl WorkspaceAction {
             | OpenGlobalSearch
             | ToggleConversationListView
             | OpenConversationListView
+            | ToggleAgentsPanel
             | ToggleNotificationMailbox { .. }
             | ToggleAgentManagementView
             | OpenAgentManagementView

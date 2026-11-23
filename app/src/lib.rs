@@ -1,5 +1,6 @@
 #![allow(clippy::doc_lazy_continuation)]
 
+mod agents;
 mod ai;
 mod alloc;
 mod antivirus;

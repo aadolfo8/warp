@@ -58,6 +58,7 @@ use crate::util::openable_file_type::{
     EditorLayout, is_markdown_file, resolve_file_target_with_editor_choice,
 };
 use crate::workspace::WorkspaceAction;
+use crate::workspace::view::agents_panel::AgentsPanelView;
 use crate::workspace::view::conversation_list::view::{
     ConversationListView, Event as ConversationListViewEvent,
 };
@@ -67,8 +68,9 @@ use crate::workspace::view::global_search::view::{
 use crate::workspace::view::{
     LEFT_PANEL_AGENT_CONVERSATIONS_BINDING_NAME, LEFT_PANEL_GLOBAL_SEARCH_BINDING_NAME,
     LEFT_PANEL_PROJECT_EXPLORER_BINDING_NAME, LEFT_PANEL_WARP_DRIVE_BINDING_NAME,
-    OPEN_GLOBAL_SEARCH_BINDING_NAME, TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME,
-    TOGGLE_PROJECT_EXPLORER_BINDING_NAME, TOGGLE_WARP_DRIVE_BINDING_NAME,
+    OPEN_GLOBAL_SEARCH_BINDING_NAME, TOGGLE_AGENTS_PANEL_BINDING_NAME,
+    TOGGLE_CONVERSATION_LIST_VIEW_BINDING_NAME, TOGGLE_PROJECT_EXPLORER_BINDING_NAME,
+    TOGGLE_WARP_DRIVE_BINDING_NAME,
 };
 use crate::workspaces::user_workspaces::UserWorkspaces;
 
@@ -76,6 +78,7 @@ use crate::workspaces::user_workspaces::UserWorkspaces;
 struct MouseStateHandles {
     project_explorer_button: MouseStateHandle,
     source_control_button: MouseStateHandle,
+    agents_button: MouseStateHandle,
     conversation_list_view_button: MouseStateHandle,
     global_search_button: MouseStateHandle,
     warp_drive_button: MouseStateHandle,
@@ -86,6 +89,7 @@ struct MouseStateHandles {
 pub enum LeftPanelAction {
     ProjectExplorer,
     SourceControl,
+    Agents,
     GlobalSearch { entry_focus: GlobalSearchEntryFocus },
     WarpDrive,
     ConversationListView,
@@ -104,6 +108,7 @@ impl ToolPanelView {
         match self {
             ToolPanelView::ProjectExplorer
             | ToolPanelView::SourceControl
+            | ToolPanelView::Agents
             | ToolPanelView::GlobalSearch { .. } => ToolPanelAvailability::Available,
             ToolPanelView::WarpDrive => {
                 if WarpDriveSettings::is_warp_drive_available(app) {
@@ -159,6 +164,7 @@ pub enum LeftPanelEvent {
 pub enum ToolPanelView {
     ProjectExplorer,
     SourceControl,
+    Agents,
     GlobalSearch { entry_focus: GlobalSearchEntryFocus },
     WarpDrive,
     ConversationListView,
@@ -203,6 +209,7 @@ mod active_view_state {
 
         left_panel.update_active_file_tree_subscription_state(ctx);
         left_panel.update_source_control_active_state(ctx);
+        left_panel.update_agents_active_state(ctx);
     }
 }
 
@@ -231,6 +238,7 @@ pub struct LeftPanelView {
     warp_drive_view: ViewHandle<DrivePanel>,
     conversation_list_view: ViewHandle<ConversationListView>,
     source_control_view: ViewHandle<SourceControlView>,
+    agents_view: ViewHandle<AgentsPanelView>,
     active_view: active_view_state::ActiveViewState,
     toolbelt_buttons: Vec<ToolbeltButtonConfig>,
     active_pane_group: Option<WeakViewHandle<PaneGroup>>,
@@ -283,6 +291,7 @@ impl LeftPanelView {
             (
                 ToolPanelView::ProjectExplorer
                 | ToolPanelView::SourceControl
+                | ToolPanelView::Agents
                 | ToolPanelView::GlobalSearch { .. }
                 | ToolPanelView::WarpDrive,
                 ToolPanelAvailability::RequiresAi,
@@ -290,6 +299,7 @@ impl LeftPanelView {
             | (
                 ToolPanelView::ProjectExplorer
                 | ToolPanelView::SourceControl
+                | ToolPanelView::Agents
                 | ToolPanelView::GlobalSearch { .. },
                 ToolPanelAvailability::RequiresAccount,
             )
@@ -373,6 +383,7 @@ impl LeftPanelView {
         ctx.subscribe_to_view(&source_control_view, |me, _, event, ctx| {
             me.handle_source_control_event(event, ctx);
         });
+        let agents_view = ctx.add_typed_action_view(AgentsPanelView::new);
 
         ctx.subscribe_to_view(&warp_drive_view, |_me, _, event, ctx| {
             ctx.emit(LeftPanelEvent::WarpDrive(event.clone()));
@@ -463,6 +474,9 @@ impl LeftPanelView {
                 me.source_control_view.update(ctx, |view, ctx| {
                     view.set_directories(local_paths.clone(), ctx);
                 });
+                me.agents_view.update(ctx, |view, ctx| {
+                    view.set_directories(local_paths.clone(), ctx);
+                });
 
                 // Directories are already in display order (most recent first) from the model
                 let local_directories = deduplicate_by_directory_name(local_paths);
@@ -493,6 +507,7 @@ impl LeftPanelView {
             warp_drive_view,
             conversation_list_view,
             source_control_view,
+            agents_view,
             active_view: active_view_state::new(active_view),
             toolbelt_buttons,
             active_pane_group: None,
@@ -578,6 +593,18 @@ impl LeftPanelView {
                 tooltip_keybinding: None,
                 tooltip_keybinding_names: Vec::new(),
             },
+            ToolPanelView::Agents => {
+                let tooltip_keybinding_names = vec![TOGGLE_AGENTS_PANEL_BINDING_NAME];
+                ToolbeltButtonConfig {
+                    icon: Icon::Terminal,
+                    active_icon: None,
+                    tooltip_text: "Agents".to_string(),
+                    action: LeftPanelAction::Agents,
+                    render_with_active_state: false,
+                    tooltip_keybinding: toolbelt_tooltip_keybinding(&tooltip_keybinding_names, ctx),
+                    tooltip_keybinding_names,
+                }
+            }
             ToolPanelView::ProjectExplorer => {
                 let tooltip_keybinding_names = vec![
                     LEFT_PANEL_PROJECT_EXPLORER_BINDING_NAME,
@@ -823,6 +850,10 @@ impl LeftPanelView {
             view.set_root_directories(all_directories, view_ctx);
         });
 
+        self.agents_view.update(ctx, |view, ctx| {
+            view.set_directories(local_paths.clone(), ctx);
+        });
+
         let local_directories = deduplicate_by_directory_name(local_paths);
         let active_file_model = pane_group.as_ref(ctx).active_file_model().clone();
 
@@ -901,6 +932,7 @@ impl LeftPanelView {
                 self.source_control_view
                     .update(ctx, |view, ctx| view.focus_commit_message(ctx));
             }
+            ToolPanelView::Agents => ctx.focus(&self.agents_view),
             ToolPanelView::WarpDrive => {
                 ctx.focus(&self.warp_drive_view);
                 self.warp_drive_view.update(ctx, |view, ctx| {
@@ -1071,6 +1103,18 @@ impl LeftPanelView {
         self.source_control_view
             .update(ctx, |view, ctx| view.set_is_active(is_visible, ctx));
     }
+
+    /// The Agents panel polls git and the agents' history only while it is visible.
+    fn update_agents_active_state(&self, ctx: &mut ViewContext<Self>) {
+        let is_open = self
+            .active_pane_group
+            .as_ref()
+            .and_then(|pane_group| pane_group.upgrade(ctx))
+            .is_some_and(|pane_group| pane_group.as_ref(ctx).left_panel_open);
+        let is_visible = is_open && self.active_view.get() == ToolPanelView::Agents;
+        self.agents_view
+            .update(ctx, |view, ctx| view.set_is_active(is_visible, ctx));
+    }
 }
 
 impl Entity for LeftPanelView {
@@ -1123,6 +1167,7 @@ impl LeftPanelView {
                 LeftPanelAction::SourceControl => {
                     self.active_view.get() == ToolPanelView::SourceControl
                 }
+                LeftPanelAction::Agents => self.active_view.get() == ToolPanelView::Agents,
                 LeftPanelAction::GlobalSearch { .. } => {
                     matches!(self.active_view.get(), ToolPanelView::GlobalSearch { .. })
                 }
@@ -1251,6 +1296,9 @@ impl LeftPanelView {
             LeftPanelAction::SourceControl => {
                 active_view_state::set(self, ToolPanelView::SourceControl, ctx);
             }
+            LeftPanelAction::Agents => {
+                active_view_state::set(self, ToolPanelView::Agents, ctx);
+            }
             LeftPanelAction::WarpDrive => {
                 active_view_state::set(self, ToolPanelView::WarpDrive, ctx);
                 if self.active_view_availability(ctx) == ToolPanelAvailability::Available {
@@ -1292,6 +1340,7 @@ impl LeftPanelView {
 
         self.update_active_file_tree_subscription_state(ctx);
         self.update_source_control_active_state(ctx);
+        self.update_agents_active_state(ctx);
     }
 
     fn deactivate_file_tree_view_for_pane_group(
@@ -1387,6 +1436,7 @@ impl View for LeftPanelView {
                     }
                 }
                 ToolPanelView::SourceControl => ctx.focus(&self.source_control_view),
+                ToolPanelView::Agents => ctx.focus(&self.agents_view),
                 ToolPanelView::WarpDrive => ctx.focus(&self.warp_drive_view),
                 ToolPanelView::ConversationListView => ctx.focus(&self.conversation_list_view),
             }
@@ -1399,6 +1449,7 @@ impl View for LeftPanelView {
         let mouse_state_handles = vec![
             self.mouse_state_handles.project_explorer_button.clone(),
             self.mouse_state_handles.source_control_button.clone(),
+            self.mouse_state_handles.agents_button.clone(),
             self.mouse_state_handles
                 .conversation_list_view_button
                 .clone(),
@@ -1459,6 +1510,9 @@ impl View for LeftPanelView {
                 ToolPanelView::SourceControl => {
                     Shrinkable::new(1.0, ChildView::new(&self.source_control_view).finish())
                         .finish()
+                }
+                ToolPanelView::Agents => {
+                    Shrinkable::new(1.0, ChildView::new(&self.agents_view).finish()).finish()
                 }
                 ToolPanelView::WarpDrive => Shrinkable::new(
                     1.0,
