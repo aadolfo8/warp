@@ -605,7 +605,8 @@ impl TerminalViewMetadata {
     }
 }
 
-fn find_terminal_view_by_id(
+/// The terminal view with this id in any open window.
+pub(crate) fn find_terminal_view_by_id(
     terminal_view_id: EntityId,
     app: &AppContext,
 ) -> Option<ViewHandle<TerminalView>> {

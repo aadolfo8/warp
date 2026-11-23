@@ -9,9 +9,6 @@ use itertools::Itertools;
 use pathfinder_geometry::rect::RectF;
 use pathfinder_geometry::vector::Vector2F;
 use render::RenderState;
-use warpui::r#async::Timer;
-
-use super::git_status::{self, GitFileStatus, GitStatuses};
 use repo_metadata::file_tree_store::{
     FileTreeDirectoryEntryState, FileTreeEntryState, FileTreeFileMetadata,
 };
@@ -24,6 +21,7 @@ use warp_core::ui::theme::color::internal_colors;
 use warp_core::{HostId, send_telemetry_from_ctx};
 use warp_util::path::LineAndColumnArg;
 use warp_util::standardized_path::StandardizedPath;
+use warpui::r#async::Timer;
 use warpui::clipboard::ClipboardContent;
 use warpui::elements::{
     AcceptedByDropTarget, Align, ChildAnchor, ChildView, Clipped, ConstrainedBox, Container,
@@ -42,6 +40,7 @@ use warpui::{
     TypedActionView, View, ViewContext, ViewHandle, WeakViewHandle, id,
 };
 
+use super::git_status::{self, GitFileStatus, GitStatuses};
 use crate::appearance::Appearance;
 use crate::code::active_file::{ActiveFileEvent, ActiveFileModel};
 use crate::code::buffer_location::LocalOrRemotePath;

@@ -109,6 +109,7 @@ fn resume_command_rejects_unsafe_session_ids() {
         session_id: session_id.to_owned(),
         title: String::new(),
         cwd: PathBuf::from("/w"),
+        branch: None,
         updated_at: SystemTime::UNIX_EPOCH,
         transcript: PathBuf::from("/w/a.jsonl"),
     };
@@ -159,4 +160,22 @@ fn scan_groups_threads_by_project_and_skips_sibling_folders() {
     assert_eq!(ids, ["s1", "s2"]);
     // The worktree folder shares the slug prefix, so it is read but not listed.
     assert_eq!(cache.len(), 3);
+}
+
+#[test]
+fn branch_comes_from_the_latest_user_record() {
+    let record = |branch: &str| {
+        serde_json::json!({
+            "type": "user",
+            "cwd": "/w/kinbox",
+            "gitBranch": branch,
+            "message": { "role": "user", "content": "go" },
+        })
+        .to_string()
+    };
+    let mut summary = TranscriptSummary::default();
+    summary.add_line(&record("main"));
+    summary.add_line(&record("feat/login"));
+    summary.add_line(&record("HEAD"));
+    assert_eq!(summary.branch.as_deref(), Some("feat/login"));
 }

@@ -103,6 +103,8 @@ pub struct ClaudeThread {
     pub title: String,
     /// The folder the conversation runs in; `claude --resume` must start there.
     pub cwd: PathBuf,
+    /// The git branch checked out the last time the user wrote in the conversation.
+    pub branch: Option<String>,
     pub updated_at: SystemTime,
     /// The `<session id>.jsonl` file holding the conversation.
     pub transcript: PathBuf,
@@ -237,11 +239,13 @@ fn read_transcript(path: &Path, modified: SystemTime) -> Option<ClaudeThread> {
     for line in head.lines().chain(tail.lines()) {
         summary.add_line(line);
     }
+    let branch = summary.branch.clone();
     let (title, cwd) = summary.finish()?;
     Some(ClaudeThread {
         session_id,
         title,
         cwd,
+        branch,
         updated_at: modified,
         transcript: path.to_path_buf(),
     })
@@ -275,6 +279,7 @@ fn move_to_trash(path: &Path) -> Result<(), String> {
 #[cfg(target_os = "windows")]
 fn move_to_trash(path: &Path) -> Result<(), String> {
     use std::os::windows::ffi::OsStrExt;
+
     use windows::Win32::UI::Shell::{
         FO_DELETE, FOF_ALLOWUNDO, FOF_NOCONFIRMATION, FOF_NOERRORUI, FOF_SILENT, SHFILEOPSTRUCTW,
         SHFileOperationW,
@@ -342,6 +347,7 @@ pub(crate) struct TranscriptSummary {
     summary: Option<String>,
     first_prompt: Option<String>,
     cwd: Option<PathBuf>,
+    pub(crate) branch: Option<String>,
 }
 
 impl TranscriptSummary {
@@ -390,6 +396,14 @@ impl TranscriptSummary {
         {
             self.cwd = Some(PathBuf::from(cwd));
         }
+        // Later records win: the user may switch branches mid-conversation.
+        if let Some(branch) = record
+            .get("gitBranch")
+            .and_then(Value::as_str)
+            .filter(|branch| !branch.is_empty() && *branch != "HEAD")
+        {
+            self.branch = Some(branch.to_owned());
+        }
         if self.first_prompt.is_none() {
             self.first_prompt = record
                 .get("message")
@@ -432,7 +446,7 @@ fn prompt_text(content: &Value) -> Option<String> {
 }
 
 /// One line, collapsed whitespace, at most `TITLE_MAX_CHARS` characters.
-fn clean_title(text: &str) -> String {
+pub(crate) fn clean_title(text: &str) -> String {
     let single_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if single_line.chars().count() <= TITLE_MAX_CHARS {
         return single_line;
