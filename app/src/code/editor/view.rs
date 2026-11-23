@@ -979,10 +979,16 @@ impl CodeEditorView {
 
         let buffer = model.buffer().as_ref(app);
         let text = buffer.text();
-        let mut ranges = RangeSet::new();
-        ranges.insert(CharOffset::from(1)..buffer.max_charoffset());
-        let decoration = model.text_decoration_for_ranges(ranges, None, app);
-        let colors = decoration.base_color_map.as_deref();
+        // An empty buffer (an empty file, or one whose contents haven't loaded yet) has no text
+        // to color, and `RangeSet` panics on the empty range `1..1`.
+        let decoration = (buffer.max_charoffset() > CharOffset::from(1)).then(|| {
+            let mut ranges = RangeSet::new();
+            ranges.insert(CharOffset::from(1)..buffer.max_charoffset());
+            model.text_decoration_for_ranges(ranges, None, app)
+        });
+        let colors = decoration
+            .as_ref()
+            .and_then(|decoration| decoration.base_color_map.as_deref());
         let default_color = vscode_appearance::palette()
             .map(|palette| palette.foreground)
             .unwrap_or_else(|| {
